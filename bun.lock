@@ -108,7 +108,7 @@
     },
     "packages/relay-protocol": {
       "name": "@acpantenna/relay-protocol",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@noble/ciphers": "2.4.0",
         "@noble/curves": "2.4.0",
