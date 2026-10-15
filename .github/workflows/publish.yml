@@ -3,11 +3,23 @@ name: Publish
 # A GitHub release tagged v<version> publishes that version of `acpantenna`
 # to npm, and @acpantenna/relay-protocol's version if it is not there yet.
 # Run by hand, it publishes whichever of the two versions npm does not have.
-# Needs the NPM_TOKEN secret: an npm token that can publish both.
+# release.yml calls it with the tag it made: a release made by the workflow's
+# own token starts no other workflow. Needs the NPM_TOKEN secret: an npm token
+# that can publish both.
 on:
   release:
     types: [published]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: The tag to publish, v<version>.
+        type: string
+        required: true
+      ci:
+        description: Run CI first. The caller may have just run it.
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -15,13 +27,17 @@ permissions:
 
 jobs:
   ci:
+    if: ${{ inputs.ci != false }}
     uses: ./.github/workflows/ci.yml
 
   publish:
     needs: ci
+    if: ${{ !cancelled() && (needs.ci.result == 'success' || needs.ci.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -36,12 +52,14 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: The tag is the package's version
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || inputs.ref
         working-directory: npm/acpantenna
+        env:
+          TAG: ${{ inputs.ref || github.ref_name }}
         run: |
           version="$(node -p 'require("./package.json").version')"
-          test "${GITHUB_REF_NAME}" = "v${version}" || {
-            echo "Release tag ${GITHUB_REF_NAME} does not match package version ${version}."
+          test "${TAG}" = "v${version}" || {
+            echo "Release tag ${TAG} does not match package version ${version}."
             exit 1
           }
 
