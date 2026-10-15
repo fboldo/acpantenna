@@ -26,6 +26,7 @@ async function join(
 	url: string,
 	role: "agent" | "browser",
 	room = ROOM,
+	resume = false,
 ): Promise<Peer> {
 	const socket = new WebSocket(`${url}/v1/rooms/${room}`);
 	const peer: Peer = { socket, statuses: [], binary: [] };
@@ -42,7 +43,7 @@ async function join(
 		peer.closed = { code: event.code, reason: event.reason };
 	});
 	await new Promise((resolve) => socket.addEventListener("open", resolve));
-	socket.send(JSON.stringify({ v: 1, role }));
+	socket.send(JSON.stringify({ v: 1, role, ...(resume ? { resume } : {}) }));
 	return peer;
 }
 
@@ -101,6 +102,50 @@ describe("development relay", () => {
 		expect(agent.statuses.at(-1)).toEqual({ t: "closed", reason: "replaced" });
 		await until(() => replacement.statuses.length === 1);
 		expect(replacement.statuses).toEqual([{ t: "ready" }]);
+	});
+
+	test("a remembered browser replaces its stale socket", async () => {
+		relay = startDevRelay();
+		const agent = await join(relay.url, "agent");
+		const stale = await join(relay.url, "browser");
+		await until(() => agent.statuses.length === 2);
+		const back = await join(relay.url, "browser", ROOM, true);
+		await until(() => stale.closed !== undefined);
+		expect(stale.statuses.at(-1)).toEqual({ t: "closed", reason: "replaced" });
+		await until(() => back.statuses.length === 1);
+		expect(back.statuses).toEqual([{ t: "ready" }]);
+		await until(() => agent.statuses.length === 4);
+		expect(agent.statuses.slice(2)).toEqual([
+			{ t: "peer-left" },
+			{ t: "ready" },
+		]);
+	});
+
+	test("a remembered browser waits for an agent that is away", async () => {
+		relay = startDevRelay();
+		const agent = await join(relay.url, "agent");
+		const browser = await join(relay.url, "browser");
+		await until(() => browser.statuses.length === 1);
+		browser.socket.close();
+		agent.socket.close();
+		await until(() => agent.closed !== undefined);
+
+		const back = await join(relay.url, "browser", ROOM, true);
+		await until(() => back.statuses.length === 1);
+		expect(back.statuses).toEqual([{ t: "waiting" }]);
+		await join(relay.url, "agent");
+		await until(() => back.statuses.length === 2);
+		expect(back.statuses.at(-1)).toEqual({ t: "ready" });
+
+		// A room that was never ready knows no browser to wait for.
+		const stranger = await join(
+			relay.url,
+			"browser",
+			"DDECAwQFBgcICQoLDA0ODw",
+			true,
+		);
+		await until(() => stranger.closed !== undefined);
+		expect(stranger.statuses).toEqual([{ t: "closed", reason: "ttl" }]);
 	});
 
 	test("text after the hello, or an oversized frame, closes the room", async () => {

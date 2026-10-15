@@ -80,17 +80,24 @@ export function startDevRelay(options: DevRelayOptions = {}): DevRelay {
 		}
 	};
 
-	const join = (socket: ServerWebSocket<Peer>, role: RelayRole) => {
+	const join = (
+		socket: ServerWebSocket<Peer>,
+		role: RelayRole,
+		resume: boolean,
+	) => {
 		const id = socket.data.room;
 		let room = rooms.get(id);
+		// A remembered browser may come back while the agent is away, as long
+		// as the room has been ready before.
+		const awaited = resume && room?.timeLimit !== undefined;
 
-		if (role === "browser" && !room?.agent) {
+		if (role === "browser" && !room?.agent && !awaited) {
 			sendStatus(socket, { t: "closed", reason: "ttl" });
 			socket.close(1000, "ttl");
 			return;
 		}
 
-		if (role === "browser" && room?.browser) {
+		if (role === "browser" && room?.browser && !resume) {
 			socket.close(CLOSE_CODE_ROOM_FULL, "room full");
 			return;
 		}
@@ -103,13 +110,21 @@ export function startDevRelay(options: DevRelayOptions = {}): DevRelay {
 		clearTimeout(room.ttl);
 		room.ttl = undefined;
 
-		if (role === "agent" && room.agent) {
-			const previous = room.agent;
+		const previous = room[role];
 
-			room.agent = undefined;
+		if (previous) {
+			// A second agent, or a remembered browser whose old socket is still
+			// open here, replaces the first.
+			room[role] = undefined;
 			previous.data.role = undefined;
 			sendStatus(previous, { t: "closed", reason: "replaced" });
 			previous.close(1000, "replaced");
+
+			const other = role === "agent" ? room.browser : room.agent;
+
+			if (other) {
+				sendStatus(other, { t: "peer-left" });
+			}
 		}
 
 		socket.data.role = role;
@@ -178,7 +193,7 @@ export function startDevRelay(options: DevRelayOptions = {}): DevRelay {
 						return;
 					}
 
-					join(socket, hello.role);
+					join(socket, hello.role, hello.resume === true);
 					return;
 				}
 

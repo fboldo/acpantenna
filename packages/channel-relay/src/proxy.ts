@@ -202,9 +202,10 @@ export class AcpProxy {
 
 	/**
 	 * The browser is gone: questions waiting for it are answered for it, and
-	 * a turn it started is cancelled.
+	 * a turn it started is cancelled, unless `cancelTurns` is false (a
+	 * remembered browser came back as a new client, to watch that turn).
 	 */
-	close(): void {
+	close(options: { cancelTurns?: boolean } = {}): void {
 		if (this.closed) {
 			return;
 		}
@@ -214,6 +215,10 @@ export class AcpProxy {
 		this.chunk = undefined;
 
 		for (const sessionId of this.prompting.keys()) {
+			if (options.cancelTurns === false) {
+				break;
+			}
+
 			void this.connection
 				.notify("session/cancel", { sessionId })
 				.catch(() => undefined);
