@@ -1,0 +1,19 @@
+{
+	// What npm ships: JavaScript and its types, for browsers and bundlers.
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"noEmit": false,
+		"outDir": "dist",
+		"rootDir": "src",
+		"declaration": true,
+		"declarationMap": true,
+		"sourceMap": true,
+		"rewriteRelativeImportExtensions": true,
+		"target": "ES2022",
+		"lib": ["ES2022", "DOM"],
+		"types": [],
+		"paths": {}
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["src/**/*.test.ts"]
+}
