@@ -1,6 +1,6 @@
 # @acpantenna/relay-protocol
 
-The wire protocol acpantenna speaks with a web client through a relay: Noise `NKpsk0_25519_ChaChaPoly_BLAKE2s`, the frame codec, the pairing link and the SAS words. The spec is [`docs/relay-protocol.md`](../../docs/relay-protocol.md).
+The wire protocol acpantenna speaks with a web client through a relay: Noise `NKpsk0_25519_ChaChaPoly_BLAKE2s`, the frame codec, the pairing link and the SAS words. The spec is [`docs/relay-protocol.md`](https://github.com/fboldo/acpantenna/blob/main/docs/relay-protocol.md).
 
 It uses only `Uint8Array`, `TextEncoder`, `crypto.getRandomValues` and the [@noble](https://paulmillr.com/noble/) libraries, so the same code runs in Bun and in a browser.
 

@@ -1,15 +1,50 @@
 {
 	"name": "@acpantenna/relay-protocol",
-	"private": true,
+	"version": "0.1.0",
+	"description": "acpantenna's relay protocol: Noise NKpsk0, frames, the pairing link and the SAS words. Runs in browsers and Bun.",
 	"license": "MIT",
-	"version": "0.0.0",
 	"type": "module",
-	"main": "./src/index.ts",
-	"types": "./src/index.ts",
+	"sideEffects": false,
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
 	"exports": {
-		".": "./src/index.ts"
+		".": {
+			"bun": "./src/index.ts",
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"dist",
+		"src",
+		"!src/**/*.test.ts",
+		"test-vectors",
+		"README.md",
+		"LICENSE"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/fboldo/acpantenna.git",
+		"directory": "packages/relay-protocol"
+	},
+	"homepage": "https://github.com/fboldo/acpantenna/blob/main/docs/relay-protocol.md",
+	"bugs": "https://github.com/fboldo/acpantenna/issues",
+	"keywords": [
+		"acp",
+		"agent-client-protocol",
+		"noise",
+		"noise-protocol",
+		"end-to-end-encryption",
+		"relay",
+		"websocket"
+	],
+	"publishConfig": {
+		"access": "public"
 	},
 	"scripts": {
+		"build": "rm -rf dist && tsc -p tsconfig.build.json && cp ../../LICENSE LICENSE",
+		"prepack": "bun run build",
 		"check": "bun run typecheck",
 		"test": "bun test src",
 		"typecheck": "tsc -p tsconfig.json --noEmit"
