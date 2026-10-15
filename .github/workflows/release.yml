@@ -1,0 +1,89 @@
+name: Release
+
+# Run by hand from main: moves acpantenna and @acpantenna/relay-protocol to the
+# next version (they are released together), commits that to main, tags
+# v<version>, makes the GitHub release with notes from the merged pull
+# requests, and publishes both to npm through publish.yml.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: patch, minor, major, or an exact version such as 0.3.0
+        required: true
+        default: patch
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: ci
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Bump the versions
+        id: bump
+        env:
+          BUMP: ${{ inputs.version }}
+        run: |
+          version="$(node npm/acpantenna/scripts/bump-version.mjs "$BUMP")"
+          tag="v${version}"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "The tag ${tag} already exists."
+            exit 1
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${tag}"
+
+      # bun.lock records the workspace packages' versions.
+      - name: Update the lockfile
+        run: bun install
+
+      - name: Commit and tag
+        env:
+          TAG: ${{ steps.bump.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add npm/acpantenna/package.json packages/relay-protocol/package.json bun.lock
+          git commit -m "release: ${TAG}"
+          git tag -a "${TAG}" -m "${TAG}"
+          # Both or neither: main moved on meanwhile means run it again.
+          git push --atomic origin HEAD:main "refs/tags/${TAG}"
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.bump.outputs.tag }}
+        run: gh release create "${TAG}" --verify-tag --title "${TAG}" --generate-notes
+
+  publish:
+    needs: release
+    uses: ./.github/workflows/publish.yml
+    with:
+      ref: ${{ needs.release.outputs.tag }}
+      ci: false
+    secrets: inherit
