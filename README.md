@@ -1,5 +1,11 @@
 # acpantenna
 
+[![npm](https://img.shields.io/npm/v/acpantenna)](https://www.npmjs.com/package/acpantenna)
+[![Downloads a month](https://img.shields.io/npm/dm/acpantenna)](https://www.npmjs.com/package/acpantenna)
+[![Downloads](https://img.shields.io/npm/dt/acpantenna?label=downloads%20in%20total)](https://www.npmjs.com/package/acpantenna)
+[![CI](https://github.com/fboldo/acpantenna/actions/workflows/ci.yml/badge.svg)](https://github.com/fboldo/acpantenna/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 **An ngrok for your coding agent.** One command gives Claude Code, Codex, OpenCode, or any [ACP](https://agentclientprotocol.com) agent a link and a QR code. Open it on your phone, or any browser, and the session you started at your desk carries on there, end-to-end encrypted.
 
 <p align="center"><img src="docs/terminal.svg" alt="acpantenna connect claude prints a latch.im link and its QR code, shows the four words the browser shows, and connects once they match" width="752"></p>
