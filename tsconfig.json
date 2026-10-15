@@ -1,0 +1,50 @@
+{
+	"compilerOptions": {
+		// Environment setup & latest features
+		"lib": ["ESNext"],
+		"types": ["bun"],
+		"target": "ESNext",
+		"module": "Preserve",
+		"moduleDetection": "force",
+		"jsx": "react-jsx",
+		"allowJs": true,
+		"paths": {
+			"@acpantenna/acp": ["./packages/acp/src/index.ts"],
+			"@acpantenna/channel": ["./packages/channel/src/index.ts"],
+			"@acpantenna/channel-matrix": ["./packages/channel-matrix/src/index.ts"],
+			"@acpantenna/channel-relay": ["./packages/channel-relay/src/index.ts"],
+			"@acpantenna/channel-relay/dev-relay": [
+				"./packages/channel-relay/src/dev-relay.ts"
+			],
+			"@acpantenna/channel-webhook": [
+				"./packages/channel-webhook/src/index.ts"
+			],
+			"@acpantenna/config": ["./packages/config/src/index.ts"],
+			"@acpantenna/core": ["./packages/core/src/index.ts"],
+			"@acpantenna/observability": ["./packages/observability/src/index.ts"],
+			"@acpantenna/relay-protocol": ["./packages/relay-protocol/src/index.ts"],
+			"@acpantenna/observability/instrument": [
+				"./packages/observability/src/instrument.ts"
+			]
+		},
+
+		// Bundler mode
+		"moduleResolution": "bundler",
+		"allowImportingTsExtensions": true,
+		"verbatimModuleSyntax": true,
+		"noEmit": true,
+
+		// Best practices
+		"strict": true,
+		"skipLibCheck": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+
+		// Some stricter flags (disabled by default)
+		"noUnusedLocals": false,
+		"noUnusedParameters": false,
+		"noPropertyAccessFromIndexSignature": false
+	},
+	"include": ["**/*.ts", "**/*.d.ts"]
+}

@@ -1,0 +1,47 @@
+{
+	"name": "acpantenna",
+	"version": "0.1.0",
+	"description": "An ngrok for your coding agent: one command gives Claude Code, Codex, OpenCode or any ACP agent an end-to-end encrypted link to use it from your phone or any browser.",
+	"license": "MIT",
+	"type": "module",
+	"bin": {
+		"acpantenna": "bin/acpantenna.js"
+	},
+	"files": [
+		"bin",
+		"dist",
+		"README.md",
+		"LICENSE",
+		"THIRD_PARTY_LICENSES.md"
+	],
+	"engines": {
+		"node": ">=18"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/fboldo/acpantenna.git"
+	},
+	"homepage": "https://github.com/fboldo/acpantenna#readme",
+	"bugs": "https://github.com/fboldo/acpantenna/issues",
+	"keywords": [
+		"acp",
+		"agent-client-protocol",
+		"claude-code",
+		"codex",
+		"opencode",
+		"remote",
+		"mobile",
+		"qr-code",
+		"end-to-end-encryption",
+		"matrix",
+		"agents",
+		"cli"
+	],
+	"scripts": {
+		"build": "bun run scripts/build.ts",
+		"prepack": "bun run scripts/build.ts"
+	},
+	"dependencies": {
+		"bun": "1.4.3"
+	}
+}

@@ -1,0 +1,33 @@
+diff --git a/node.mjs b/node.mjs
+index 65c9cca4d4ba3a1a402d8576f0a3ab2fdeb0ffa0..164a3c68e6ca653e69a164678381ea4ff9645c52 100644
+--- a/node.mjs
++++ b/node.mjs
+@@ -26,6 +26,10 @@ import * as bindings from "./pkg/matrix_sdk_crypto_wasm_bg.js";
+ 
+ const filename = fileURLToPath(new URL("./pkg/matrix_sdk_crypto_wasm_bg.wasm", import.meta.url));
+ 
++// Patched by acpantenna: a single-file bundle has no `pkg/` beside it, so
++// bytes the bundle embedded (and set here) are used instead of the file.
++const EMBEDDED_WASM = Symbol.for("matrix-sdk-crypto-wasm.bytes");
++
+ // In node environments, we want to automatically load the WASM module
+ // synchronously if the consumer did not call `initAsync`. To do so, we install
+ // a `Proxy` that will intercept calls to the WASM module.
+@@ -63,7 +67,7 @@ let initialised = false;
+  */
+ function loadModuleSync() {
+     if (modPromise) throw new Error("The WASM module is being loaded asynchronously but hasn't finished");
+-    const bytes = readFileSync(filename);
++    const bytes = globalThis[EMBEDDED_WASM] ?? readFileSync(filename);
+     const mod = new WebAssembly.Module(bytes);
+ 
+     const instance = new WebAssembly.Instance(mod, {
+@@ -83,7 +87,7 @@ function loadModuleSync() {
+  * @returns {Promise<typeof import("./pkg/matrix_sdk_crypto_wasm_bg.wasm.d.ts")>}
+  */
+ async function loadModuleAsync() {
+-    const bytes = await readFile(filename);
++    const bytes = globalThis[EMBEDDED_WASM] ?? (await readFile(filename));
+     const { instance } = await WebAssembly.instantiate(bytes, {
+         // @ts-expect-error: The bindings don't exactly match the 'ExportValue' type
+         "./matrix_sdk_crypto_wasm_bg.js": bindings,

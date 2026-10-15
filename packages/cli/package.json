@@ -1,0 +1,31 @@
+{
+	"name": "@acpantenna/cli",
+	"private": true,
+	"license": "MIT",
+	"version": "0.0.0",
+	"type": "module",
+	"main": "./src/main.ts",
+	"types": "./src/main.ts",
+	"exports": {
+		".": "./src/main.ts"
+	},
+	"bin": {
+		"acpantenna": "./src/main.ts"
+	},
+	"scripts": {
+		"check": "bun run typecheck",
+		"test": "bun test src",
+		"typecheck": "tsc -p tsconfig.json --noEmit"
+	},
+	"dependencies": {
+		"@acpantenna/channel": "workspace:*",
+		"@acpantenna/channel-matrix": "workspace:*",
+		"@acpantenna/channel-relay": "workspace:*",
+		"@acpantenna/channel-webhook": "workspace:*",
+		"@acpantenna/config": "workspace:*",
+		"@acpantenna/core": "workspace:*",
+		"@acpantenna/observability": "workspace:*",
+		"@clack/prompts": "1.8.1",
+		"uqr": "0.1.3"
+	}
+}

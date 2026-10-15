@@ -1,0 +1,22 @@
+{
+	"name": "@acpantenna/channel-relay",
+	"private": true,
+	"license": "MIT",
+	"version": "0.0.0",
+	"type": "module",
+	"main": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": "./src/index.ts",
+		"./dev-relay": "./src/dev-relay.ts"
+	},
+	"scripts": {
+		"check": "bun run typecheck",
+		"test": "bun test src",
+		"typecheck": "tsc -p tsconfig.json --noEmit"
+	},
+	"dependencies": {
+		"@acpantenna/channel": "workspace:*",
+		"@acpantenna/relay-protocol": "workspace:*"
+	}
+}

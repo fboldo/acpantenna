@@ -1,0 +1,4 @@
+# Every checkout has LF endings, as the formatter expects, whatever the OS.
+* text=auto eol=lf
+*.svg -diff
+*.wasm binary

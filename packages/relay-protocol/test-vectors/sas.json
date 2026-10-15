@@ -1,0 +1,21 @@
+{
+	"description": "SAS words: BLAKE2s(\"acpantenna-sas\" || h), first 44 bits, four 11-bit indexes into the BIP-39 English list.",
+	"vectors": [
+		{
+			"h": "0000000000000000000000000000000000000000000000000000000000000000",
+			"words": ["torch", "program", "manage", "bone"]
+		},
+		{
+			"h": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+			"words": ["hub", "provide", "level", "vanish"]
+		},
+		{
+			"h": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+			"words": ["grape", "round", "polar", "effort"]
+		},
+		{
+			"h": "6bd69bd4066f41f32e47134976f5bf01606f7a4a0e04369fe61158b06f3a144e",
+			"words": ["crystal", "empty", "dismiss", "abandon"]
+		}
+	]
+}

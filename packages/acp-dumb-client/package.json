@@ -1,0 +1,22 @@
+{
+	"name": "@acpantenna/acp-dumb-client",
+	"license": "MIT",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"main": "./src/main.ts",
+	"types": "./src/main.ts",
+	"exports": {
+		".": "./src/main.ts"
+	},
+	"bin": {
+		"acpantenna-dumb-client": "./src/main.ts"
+	},
+	"scripts": {
+		"check": "bun run typecheck",
+		"typecheck": "tsc -p tsconfig.json --noEmit"
+	},
+	"dependencies": {
+		"@agentclientprotocol/sdk": "^1.1.0"
+	}
+}
