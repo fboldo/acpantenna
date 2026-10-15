@@ -1,6 +1,7 @@
 /**
- * `Noise_NKpsk0_25519_ChaChaPoly_BLAKE2s`, following the Noise Protocol
- * Framework, revision 34 (https://noiseprotocol.org/noise.html): the
+ * `Noise_NKpsk0_25519_ChaChaPoly_BLAKE2s` for pairing and
+ * `Noise_KK_25519_ChaChaPoly_BLAKE2s` for reconnecting, following the Noise
+ * Protocol Framework, revision 34 (https://noiseprotocol.org/noise.html): the
  * CipherState, SymmetricState and HandshakeState objects of §5, with the
  * `psk` modifier of §9 and `Rekey()` of §11.3.
  *
@@ -10,6 +11,14 @@
  *     ...
  *     -> psk, e, es
  *     <- e, ee
+ *
+ * KK:
+ *
+ *     -> s
+ *     <- s
+ *     ...
+ *     -> e, es, ss
+ *     <- e, ee, se
  */
 
 import { chacha20poly1305 } from "@noble/ciphers/chacha.js";
@@ -19,6 +28,7 @@ import { hmac } from "@noble/hashes/hmac.js";
 import { concatBytes, randomBytes, utf8Encode } from "./bytes.ts";
 
 export const PROTOCOL_NAME = "Noise_NKpsk0_25519_ChaChaPoly_BLAKE2s";
+export const KK_PROTOCOL_NAME = "Noise_KK_25519_ChaChaPoly_BLAKE2s";
 export const DHLEN = 32;
 export const HASHLEN = 32;
 export const KEYLEN = 32;
@@ -46,6 +56,40 @@ export function generateKeyPair(privateKey?: Uint8Array): KeyPair {
 		throw new NoiseError("An X25519 private key is 32 bytes");
 	}
 	return { privateKey: secret, publicKey: x25519.getPublicKey(secret) };
+}
+
+/**
+ * A static key whose private half this code may never see: a browser keeps
+ * it as a non-extractable WebCrypto key, so its DH is asynchronous.
+ */
+export interface StaticKey {
+	publicKey: Uint8Array;
+	/** X25519 with `publicKey`; rejects (any error) for an invalid one. */
+	dh(publicKey: Uint8Array): Promise<Uint8Array>;
+}
+
+/** A {@link StaticKey} over a key pair held in memory. */
+export function staticKey(keyPair: KeyPair): StaticKey {
+	return {
+		publicKey: keyPair.publicKey,
+		dh: async (publicKey) => dh(keyPair, publicKey),
+	};
+}
+
+async function staticDh(
+	key: StaticKey,
+	publicKey: Uint8Array,
+): Promise<Uint8Array> {
+	let shared: Uint8Array;
+	try {
+		shared = await key.dh(publicKey);
+	} catch {
+		throw new NoiseError("Invalid X25519 public key");
+	}
+	if (shared.length !== DHLEN || shared.every((byte) => byte === 0)) {
+		throw new NoiseError("Invalid X25519 public key");
+	}
+	return shared;
 }
 
 function dh(keyPair: KeyPair, publicKey: Uint8Array): Uint8Array {
@@ -443,5 +487,169 @@ export class HandshakeState {
 			throw new NoiseError("Handshake message too long");
 		}
 		return message;
+	}
+}
+
+export interface KKHandshakeOptions {
+	prologue: Uint8Array;
+	/** This side's static key. */
+	staticKey: StaticKey;
+	/** The other side's static public key, known in advance. */
+	remoteStaticPublicKey: Uint8Array;
+	/** Fixes the ephemeral key, for test vectors only. */
+	ephemeralPrivateKey?: Uint8Array;
+}
+
+/**
+ * The KK HandshakeState (§5.3), for one side: both static keys are known in
+ * advance, so it needs no psk. As with {@link HandshakeState}, the initiator
+ * writes message 1 and reads message 2. Its steps are asynchronous because a
+ * {@link StaticKey}'s DH is.
+ */
+export class KKHandshakeState {
+	readonly initiator: boolean;
+	private readonly symmetric = new SymmetricState(KK_PROTOCOL_NAME);
+	private readonly staticKey: StaticKey;
+	private readonly remoteStatic: Uint8Array;
+	private readonly fixedEphemeral: Uint8Array | undefined;
+	private ephemeral: KeyPair | undefined;
+	private remoteEphemeral: Uint8Array | undefined;
+	private step = 0;
+	result: HandshakeResult | undefined;
+
+	private constructor(initiator: boolean, options: KKHandshakeOptions) {
+		if (
+			options.remoteStaticPublicKey.length !== DHLEN ||
+			options.staticKey.publicKey.length !== DHLEN
+		) {
+			throw new NoiseError("A static key is 32 bytes");
+		}
+		this.initiator = initiator;
+		this.staticKey = options.staticKey;
+		this.remoteStatic = options.remoteStaticPublicKey;
+		this.fixedEphemeral = options.ephemeralPrivateKey;
+		this.symmetric.mixHash(options.prologue);
+		// The pre-messages `-> s` and `<- s`: the initiator's key is hashed first.
+		const [initiatorStatic, responderStatic] = initiator
+			? [this.staticKey.publicKey, this.remoteStatic]
+			: [this.remoteStatic, this.staticKey.publicKey];
+		this.symmetric.mixHash(initiatorStatic);
+		this.symmetric.mixHash(responderStatic);
+	}
+
+	static initiator(options: KKHandshakeOptions): KKHandshakeState {
+		return new KKHandshakeState(true, options);
+	}
+
+	static responder(options: KKHandshakeOptions): KKHandshakeState {
+		return new KKHandshakeState(false, options);
+	}
+
+	get handshakeHash(): Uint8Array {
+		return this.symmetric.handshakeHash;
+	}
+
+	/** Writes the next handshake message, carrying `payload`. */
+	async writeMessage(
+		payload: Uint8Array = new Uint8Array(0),
+	): Promise<Uint8Array> {
+		if (this.step === 0 && this.initiator) {
+			// -> e, es, ss
+			this.step = -1;
+			const e = this.writeEphemeral();
+			this.symmetric.mixKey(dh(this.ephemeralKeyPair(), this.remoteStatic));
+			this.symmetric.mixKey(await staticDh(this.staticKey, this.remoteStatic));
+			const message = concatBytes(e, this.symmetric.encryptAndHash(payload));
+			this.step = 1;
+			return message;
+		}
+		if (this.step === 1 && !this.initiator) {
+			// <- e, ee, se
+			const e = this.writeEphemeral();
+			this.symmetric.mixKey(
+				dh(this.ephemeralKeyPair(), this.remoteEphemeralKey()),
+			);
+			this.symmetric.mixKey(dh(this.ephemeralKeyPair(), this.remoteStatic));
+			const message = concatBytes(e, this.symmetric.encryptAndHash(payload));
+			this.finish();
+			return message;
+		}
+		throw new NoiseError("Not this side's turn to write");
+	}
+
+	/** Reads the next handshake message and returns its payload. */
+	async readMessage(message: Uint8Array): Promise<Uint8Array> {
+		if (message.length > MAX_MESSAGE_LENGTH) {
+			throw new NoiseError("Handshake message too long");
+		}
+		if (message.length < DHLEN + TAGLEN) {
+			throw new NoiseError("Handshake message too short");
+		}
+		const e = message.subarray(0, DHLEN);
+		const rest = message.subarray(DHLEN);
+		if (this.step === 0 && !this.initiator) {
+			// -> e, es, ss
+			this.step = -1;
+			this.readEphemeral(e);
+			this.symmetric.mixKey(
+				await staticDh(this.staticKey, this.remoteEphemeralKey()),
+			);
+			this.symmetric.mixKey(await staticDh(this.staticKey, this.remoteStatic));
+			const payload = this.symmetric.decryptAndHash(rest);
+			this.step = 1;
+			return payload;
+		}
+		if (this.step === 1 && this.initiator) {
+			// <- e, ee, se
+			this.step = -1;
+			this.readEphemeral(e);
+			this.symmetric.mixKey(
+				dh(this.ephemeralKeyPair(), this.remoteEphemeralKey()),
+			);
+			this.symmetric.mixKey(
+				await staticDh(this.staticKey, this.remoteEphemeralKey()),
+			);
+			const payload = this.symmetric.decryptAndHash(rest);
+			this.finish();
+			return payload;
+		}
+		throw new NoiseError("Not this side's turn to read");
+	}
+
+	private writeEphemeral(): Uint8Array {
+		this.ephemeral = generateKeyPair(this.fixedEphemeral);
+		// No psk, so `e` is only hashed.
+		this.symmetric.mixHash(this.ephemeral.publicKey);
+		return this.ephemeral.publicKey;
+	}
+
+	private readEphemeral(e: Uint8Array): void {
+		this.remoteEphemeral = e.slice();
+		this.symmetric.mixHash(this.remoteEphemeral);
+	}
+
+	private ephemeralKeyPair(): KeyPair {
+		if (!this.ephemeral) {
+			throw new NoiseError("No ephemeral key");
+		}
+		return this.ephemeral;
+	}
+
+	private remoteEphemeralKey(): Uint8Array {
+		if (!this.remoteEphemeral) {
+			throw new NoiseError("No remote ephemeral key");
+		}
+		return this.remoteEphemeral;
+	}
+
+	private finish(): void {
+		const [initiatorSend, responderSend] = this.symmetric.split();
+		this.result = {
+			send: this.initiator ? initiatorSend : responderSend,
+			receive: this.initiator ? responderSend : initiatorSend,
+			handshakeHash: this.symmetric.handshakeHash,
+			remoteEphemeralPublicKey: this.remoteEphemeralKey(),
+		};
+		this.step = 2;
 	}
 }

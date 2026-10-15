@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import kkVectors from "../test-vectors/noise-kk.json";
 import cacophony from "../test-vectors/noise-nkpsk0.json";
 import { bytesToHex, hexToBytes } from "./bytes.ts";
 import {
 	CipherState,
 	generateKeyPair,
 	HandshakeState,
+	KK_PROTOCOL_NAME,
+	KKHandshakeState,
 	NoiseError,
 	PROTOCOL_NAME,
+	staticKey,
 } from "./noise.ts";
 
 describe("Noise NKpsk0 against the cacophony vectors", () => {
@@ -156,5 +160,113 @@ describe("Noise NKpsk0", () => {
 				sender.encryptWithAd(new Uint8Array(0), Uint8Array.of(9)),
 			),
 		).toThrow(NoiseError);
+	});
+});
+
+describe("Noise KK against the cacophony vectors", () => {
+	const vectors = kkVectors.vectors.filter(
+		(vector) => vector.protocol_name === KK_PROTOCOL_NAME,
+	);
+
+	test("the fixture has vectors for this protocol", () => {
+		expect(vectors.length).toBeGreaterThan(0);
+	});
+
+	for (const vector of vectors) {
+		test(vector.protocol_name, async () => {
+			const initiatorStatic = generateKeyPair(hexToBytes(vector.init_static));
+			const responderStatic = generateKeyPair(hexToBytes(vector.resp_static));
+			expect(bytesToHex(initiatorStatic.publicKey)).toBe(
+				vector.resp_remote_static,
+			);
+			expect(bytesToHex(responderStatic.publicKey)).toBe(
+				vector.init_remote_static,
+			);
+			const initiator = KKHandshakeState.initiator({
+				prologue: hexToBytes(vector.init_prologue),
+				staticKey: staticKey(initiatorStatic),
+				remoteStaticPublicKey: hexToBytes(vector.init_remote_static),
+				ephemeralPrivateKey: hexToBytes(vector.init_ephemeral),
+			});
+			const responder = KKHandshakeState.responder({
+				prologue: hexToBytes(vector.resp_prologue),
+				staticKey: staticKey(responderStatic),
+				remoteStaticPublicKey: hexToBytes(vector.resp_remote_static),
+				ephemeralPrivateKey: hexToBytes(vector.resp_ephemeral),
+			});
+
+			const [first, second, ...transport] = vector.messages;
+			if (!first || !second) {
+				throw new Error("A vector has at least two messages");
+			}
+
+			const message1 = await initiator.writeMessage(hexToBytes(first.payload));
+			expect(bytesToHex(message1)).toBe(first.ciphertext);
+			expect(bytesToHex(await responder.readMessage(message1))).toBe(
+				first.payload,
+			);
+
+			const message2 = await responder.writeMessage(hexToBytes(second.payload));
+			expect(bytesToHex(message2)).toBe(second.ciphertext);
+			expect(bytesToHex(await initiator.readMessage(message2))).toBe(
+				second.payload,
+			);
+
+			const initiatorResult = initiator.result!;
+			const responderResult = responder.result!;
+			expect(bytesToHex(initiatorResult.handshakeHash)).toBe(
+				vector.handshake_hash,
+			);
+			expect(bytesToHex(responderResult.handshakeHash)).toBe(
+				vector.handshake_hash,
+			);
+
+			transport.forEach((message, index) => {
+				const fromInitiator = index % 2 === 0;
+				const sender = fromInitiator ? initiatorResult : responderResult;
+				const receiver = fromInitiator ? responderResult : initiatorResult;
+				const ciphertext = sender.send.encryptWithAd(
+					new Uint8Array(0),
+					hexToBytes(message.payload),
+				);
+				expect(bytesToHex(ciphertext)).toBe(message.ciphertext);
+				expect(
+					bytesToHex(
+						receiver.receive.decryptWithAd(new Uint8Array(0), ciphertext),
+					),
+				).toBe(message.payload);
+			});
+		});
+	}
+
+	test("a responder with a different initiator key refuses message 1", async () => {
+		const initiatorStatic = generateKeyPair();
+		const responderStatic = generateKeyPair();
+		const initiator = KKHandshakeState.initiator({
+			prologue: new Uint8Array(0),
+			staticKey: staticKey(initiatorStatic),
+			remoteStaticPublicKey: responderStatic.publicKey,
+		});
+		const responder = KKHandshakeState.responder({
+			prologue: new Uint8Array(0),
+			staticKey: staticKey(responderStatic),
+			remoteStaticPublicKey: generateKeyPair().publicKey,
+		});
+		const message1 = await initiator.writeMessage();
+		await expect(responder.readMessage(message1)).rejects.toThrow(NoiseError);
+	});
+
+	test("a static key whose DH fails is an invalid key", async () => {
+		const initiator = KKHandshakeState.initiator({
+			prologue: new Uint8Array(0),
+			staticKey: {
+				publicKey: generateKeyPair().publicKey,
+				dh: () => Promise.reject(new Error("OperationError")),
+			},
+			remoteStaticPublicKey: generateKeyPair().publicKey,
+		});
+		await expect(initiator.writeMessage()).rejects.toThrow(
+			"Invalid X25519 public key",
+		);
 	});
 });

@@ -7,6 +7,10 @@
  * decrypts (key confirmation), and a message 1 seen before is refused. It
  * stops working when it expires, if no browser has paired by then. The
  * browser gets ACP only after the user has confirmed the words here.
+ *
+ * A browser that sent its key (REMEMBER) may leave and come back: the
+ * connection stays in the room, keeps what it sends, and lets that browser,
+ * and only it, reconnect (Noise KK) for as long as the connection lives.
  */
 
 import type {
@@ -23,7 +27,9 @@ import {
 	parseRelayStatus,
 	type RelayHello,
 	type RelaySession,
+	ResumeBuffer,
 	randomBytes,
+	reconnectResponder,
 	responder,
 	roomId,
 	roomPath,
@@ -34,7 +40,7 @@ import { AcpProxy, refusal } from "./proxy.ts";
 const VERIFY_GRACE_MS = 2 * 60_000;
 /** A PING this often keeps the way through the relay open. */
 const KEEPALIVE_MS = 30_000;
-/** Failed handshakes a link takes before it is given up. */
+/** Failed handshakes a link, or a remembered browser, takes before it is given up. */
 const MAX_FAILED_ATTEMPTS = 5;
 
 export interface PairingOptions {
@@ -66,6 +72,13 @@ export class RelayPairing implements ChannelAcpClient {
 	private failedAttempts = 0;
 	private deadline: ReturnType<typeof setTimeout> | undefined;
 	private keepalive: ReturnType<typeof setInterval> | undefined;
+	/** The browser's static key, once it has sent REMEMBER. */
+	private browserKey: Uint8Array | undefined;
+	/** What the connection sent, kept across the browser's comings and goings. */
+	private readonly buffer = new ResumeBuffer();
+	private failedReconnects = 0;
+	/** A reconnect whose handshake has not finished yet. */
+	private reconnecting: RelaySession | undefined;
 
 	constructor(options: PairingOptions) {
 		this.options = options;
@@ -153,13 +166,7 @@ export class RelayPairing implements ChannelAcpClient {
 
 		session.confirm();
 		clearTimeout(this.deadline);
-		this.proxy = new AcpProxy({
-			connection: this.options.connection,
-			send: (message) => session.send(message),
-			coalesceMs: this.options.coalesceMs,
-			interactionTimeoutMs: this.options.interactionTimeoutMs,
-			...(this.options.logger ? { logger: this.options.logger } : {}),
-		});
+		this.proxy = this.newProxy();
 		this.status = { state: "connected", words: this.status.words };
 	}
 
@@ -208,9 +215,17 @@ export class RelayPairing implements ChannelAcpClient {
 		}
 	}
 
-	/** A browser has joined: a new handshake, with the link's psk, if it is still unspent. */
+	/**
+	 * A browser has joined: a new handshake, with the link's psk if it is
+	 * still unspent, or a reconnect if the browser is remembered.
+	 */
 	private newSession(): void {
 		const psk = this.psk;
+
+		if (this.remembered()) {
+			this.reconnectSession();
+			return;
+		}
 
 		if (this.keyConfirmed || !psk || this.status.state === "ended") {
 			return;
@@ -223,6 +238,7 @@ export class RelayPairing implements ChannelAcpClient {
 			room: this.room,
 			webOrigin: this.options.webOrigin,
 			acceptEphemeral: this.seen.accept,
+			buffer: this.buffer,
 			send: (data) => this.socket?.send(data),
 			onKeyConfirmed: () => {
 				// The psk is spent: no other browser can pair with this link.
@@ -234,10 +250,15 @@ export class RelayPairing implements ChannelAcpClient {
 					Math.max(this.expiry * 1000 - Date.now(), VERIFY_GRACE_MS),
 				);
 				this.keepalive = setInterval(() => {
-					if (session.state === "pairing" || session.state === "open") {
-						session.ping();
+					const current = this.session;
+
+					if (current?.state === "pairing" || current?.state === "open") {
+						current.ping();
 					}
 				}, KEEPALIVE_MS);
+			},
+			onRemember: (key) => {
+				this.browserKey = key;
 			},
 			onHandshake: (info) => {
 				this.status = { state: "verifying", words: info.sas };
@@ -249,6 +270,66 @@ export class RelayPairing implements ChannelAcpClient {
 		});
 
 		this.session = session;
+	}
+
+	/** The words were confirmed and the browser sent its key: it may come back. */
+	private remembered(): boolean {
+		return this.browserKey !== undefined && this.status.state === "connected";
+	}
+
+	/** The remembered browser is back: a Noise KK handshake with its key. */
+	private reconnectSession(): void {
+		this.session?.transportClosed("The browser came back.");
+		const session = reconnectResponder({
+			staticKeyPair: this.options.staticKeyPair,
+			room: this.room,
+			webOrigin: this.options.webOrigin,
+			remoteStaticPublicKey: this.browserKey as Uint8Array,
+			buffer: this.buffer,
+			send: (data) => this.socket?.send(data),
+			onKeyConfirmed: () => this.reconnected(session),
+			onMessage: (message) => {
+				void this.proxy?.receive(message);
+			},
+			onClose: (event) => this.sessionClosed(session, event),
+		});
+
+		this.session = session;
+		this.reconnecting = session;
+	}
+
+	private reconnected(session: RelaySession): void {
+		this.reconnecting = undefined;
+		this.failedReconnects = 0;
+		this.status = { state: "connected", words: this.status.words };
+
+		if (!session.resumed) {
+			// A page that lost its state (a reload) is a new client: questions put
+			// to the old one are answered for it, but the agent's turn goes on.
+			this.proxy?.close({ cancelTurns: false });
+			this.proxy = this.newProxy();
+		}
+	}
+
+	private newProxy(): AcpProxy {
+		return new AcpProxy({
+			connection: this.options.connection,
+			send: (message) => this.sendToBrowser(message),
+			coalesceMs: this.options.coalesceMs,
+			interactionTimeoutMs: this.options.interactionTimeoutMs,
+			...(this.options.logger ? { logger: this.options.logger } : {}),
+		});
+	}
+
+	/** While the browser is away, what the agent says is kept for its return. */
+	private sendToBrowser(message: string): void {
+		const session = this.session;
+
+		if (session?.state === "open") {
+			session.send(message);
+		} else {
+			this.buffer.add(message);
+		}
 	}
 
 	private peerLeft(): void {
@@ -283,6 +364,41 @@ export class RelayPairing implements ChannelAcpClient {
 				}
 			}
 			return;
+		}
+
+		if (this.remembered()) {
+			const handshaking = session === this.reconnecting;
+
+			this.reconnecting = undefined;
+
+			if (event.kind === "lost") {
+				// Gone again; the room waits for the next reconnect.
+				this.status = {
+					state: "connected",
+					words: this.status.words,
+					away: true,
+				};
+				return;
+			}
+
+			if (event.kind === "error" && handshaking) {
+				this.failedReconnects++;
+				this.options.logger?.warn("A browser failed to reconnect.", {
+					reason: event.reason,
+				});
+
+				if (this.failedReconnects >= MAX_FAILED_ATTEMPTS) {
+					this.end("Too many failed attempts to reconnect.");
+					return;
+				}
+
+				this.status = {
+					state: "connected",
+					words: this.status.words,
+					away: true,
+				};
+				return;
+			}
 		}
 
 		switch (event.kind) {

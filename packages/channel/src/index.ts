@@ -311,6 +311,8 @@ export interface ChannelPairing {
 	words?: string[];
 	/** Why it ended. */
 	reason?: string;
+	/** `connected`, but the remote client has gone for now and may come back. */
+	away?: boolean;
 }
 
 export type ChannelFactory<TConfig = unknown> = (

@@ -6,14 +6,18 @@
 
 import {
 	type CloseEvent,
+	generateKeyPair,
 	initiator,
+	type KeyPair,
 	type PairingLink,
 	parseLink,
 	parseRelayStatus,
 	type RelaySession,
 	type RelayStatus,
+	reconnectInitiator,
 	roomId,
 	roomPath,
+	staticKey,
 } from "@acpantenna/relay-protocol";
 
 export interface RpcAnswer {
@@ -26,7 +30,9 @@ export type RequestHandler = (method: string, params: unknown) => unknown;
 
 export class RelayBrowser {
 	readonly link: PairingLink;
-	readonly socket: WebSocket;
+	socket: WebSocket;
+	/** Its key for reconnecting, once it has sent REMEMBER. */
+	staticKeyPair: KeyPair | undefined;
 	readonly statuses: RelayStatus[] = [];
 	/** Every JSON-RPC message the agent side sent, parsed. */
 	readonly received: Array<Record<string, unknown>> = [];
@@ -38,17 +44,27 @@ export class RelayBrowser {
 	private nextId = 1;
 	private readonly waiting = new Map<unknown, (answer: RpcAnswer) => void>();
 	private confirmedResolve: (() => void) | undefined;
-	readonly confirmed: Promise<void>;
+	confirmed: Promise<void>;
+	private readonly relayUrl: string;
+	private readonly remember: boolean;
 
-	private constructor(link: string, relayUrl: string) {
+	private constructor(link: string, relayUrl: string, remember: boolean) {
 		this.link = parseLink(link);
-		this.socket = new WebSocket(
-			`${relayUrl}${roomPath(roomId(this.link.room))}`,
-		);
-		this.socket.binaryType = "arraybuffer";
+		this.relayUrl = relayUrl;
+		this.remember = remember;
+		this.socket = this.newSocket();
 		this.confirmed = new Promise((resolve) => {
 			this.confirmedResolve = resolve;
 		});
+	}
+
+	private newSocket(): WebSocket {
+		const socket = new WebSocket(
+			`${this.relayUrl}${roomPath(roomId(this.link.room))}`,
+		);
+
+		socket.binaryType = "arraybuffer";
+		return socket;
 	}
 
 	/**
@@ -58,42 +74,112 @@ export class RelayBrowser {
 	static async open(
 		link: string,
 		relayUrl: string,
-		options: { handshake?: boolean } = {},
+		options: { handshake?: boolean; remember?: boolean } = {},
 	): Promise<RelayBrowser> {
-		const browser = new RelayBrowser(link, relayUrl);
-		const handshake = options.handshake ?? true;
+		const browser = new RelayBrowser(link, relayUrl, options.remember ?? false);
 
-		browser.socket.addEventListener("message", (event) => {
+		await browser.join(options.handshake ?? true, () => browser.startSession());
+
+		return browser;
+	}
+
+	/**
+	 * Comes back as the remembered browser, on a new socket: carrying on
+	 * where it stopped, or, with `resume` false, as a page that lost its
+	 * state. `as` reconnects with another key instead, as a stranger would.
+	 */
+	async reconnect(
+		options: { resume?: boolean; as?: KeyPair } = {},
+	): Promise<void> {
+		const keyPair = options.as ?? this.staticKeyPair;
+
+		if (!keyPair) {
+			throw new Error("This browser is not remembered");
+		}
+
+		const resume = options.resume ?? true;
+		const buffer = this.session?.buffer;
+
+		this.socket.close();
+		this.socket = this.newSocket();
+		this.closeEvent = undefined;
+		this.socketClosed = undefined;
+		this.confirmed = new Promise((resolve) => {
+			this.confirmedResolve = resolve;
+		});
+
+		if (!resume) {
+			this.waiting.clear();
+			this.nextId = 1;
+		}
+
+		await this.join(
+			true,
+			() => {
+				const session = reconnectInitiator({
+					room: this.link.room,
+					webOrigin: this.link.webOrigin,
+					remoteStaticPublicKey: this.link.staticPublicKey,
+					staticKey: staticKey(keyPair),
+					resume,
+					...(buffer ? { buffer } : {}),
+					send: (data) => this.socket.send(data),
+					onConfirmed: () => this.confirmedResolve?.(),
+					onMessage: (text) => this.handleMessage(text),
+					onClose: (event) => {
+						this.closeEvent = event;
+					},
+				});
+
+				this.session = session;
+				session.start();
+			},
+			true,
+		);
+	}
+
+	private async join(
+		handshake: boolean,
+		start: () => void,
+		resume = false,
+	): Promise<void> {
+		const socket = this.socket;
+
+		socket.addEventListener("message", (event) => {
 			if (typeof event.data === "string") {
 				const status = parseRelayStatus(event.data);
 
 				if (status) {
-					browser.statuses.push(status);
+					this.statuses.push(status);
 
 					if (status.t === "ready" && handshake) {
-						browser.startSession();
+						start();
 					}
 				}
 				return;
 			}
 
 			if (handshake) {
-				browser.session?.receive(new Uint8Array(event.data as ArrayBuffer));
+				this.session?.receive(new Uint8Array(event.data as ArrayBuffer));
 			}
 		});
-		browser.socket.addEventListener("close", (event) => {
-			browser.socketClosed = { code: event.code, reason: event.reason };
-			browser.session?.transportClosed();
+		socket.addEventListener("close", (event) => {
+			if (socket !== this.socket) {
+				return;
+			}
+
+			this.socketClosed = { code: event.code, reason: event.reason };
+			this.session?.transportClosed();
 		});
 		await new Promise<void>((resolve, reject) => {
-			browser.socket.addEventListener("open", () => resolve());
-			browser.socket.addEventListener("error", () =>
+			socket.addEventListener("open", () => resolve());
+			socket.addEventListener("error", () =>
 				reject(new Error("Could not reach the relay")),
 			);
 		});
-		browser.socket.send(JSON.stringify({ v: 1, role: "browser" }));
-
-		return browser;
+		socket.send(
+			JSON.stringify({ v: 1, role: "browser", ...(resume ? { resume } : {}) }),
+		);
 	}
 
 	/** Sends a request and waits for its answer. */
@@ -146,7 +232,14 @@ export class RelayBrowser {
 			onHandshake: (info) => {
 				this.words = info.sas;
 			},
-			onConfirmed: () => this.confirmedResolve?.(),
+			onConfirmed: () => {
+				if (this.remember) {
+					this.staticKeyPair = generateKeyPair();
+					session.remember(this.staticKeyPair.publicKey);
+				}
+
+				this.confirmedResolve?.();
+			},
 			onMessage: (text) => this.handleMessage(text),
 			onClose: (event) => {
 				this.closeEvent = event;

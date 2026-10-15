@@ -18,6 +18,7 @@ import {
 	controlFrame,
 	encodeFrame,
 	FrameType,
+	generateKeyPair,
 	HandshakeState,
 	parseLink,
 	prologue,
@@ -134,8 +135,9 @@ async function pair(
 	harness: Harness,
 	link: string,
 	conversationId = "c1",
+	options: { remember?: boolean } = {},
 ): Promise<RelayBrowser> {
-	const browser = await RelayBrowser.open(link, relay.url);
+	const browser = await RelayBrowser.open(link, relay.url, options);
 	const target = { channelId: "web", conversationId };
 
 	await until(
@@ -498,6 +500,112 @@ test("a stream cut short before CLOSE is fatal", async () => {
 
 		await until(
 			async () => (await harness.gateway.listConnections()).length === 0,
+			5000,
+			"the connection to end",
+		);
+	} finally {
+		await harness.stop();
+	}
+}, 30_000);
+
+test("a remembered browser leaves mid-turn, comes back, and misses nothing", async () => {
+	const harness = await startHarness();
+	const target = { channelId: "web", conversationId: "c1" };
+
+	try {
+		const { link, sessionId } = await harness.connect();
+		const browser = await pair(harness, link, "c1", { remember: true });
+
+		await until(() => browser.staticKeyPair !== undefined);
+		await browser.rpc("initialize", { protocolVersion: 1 });
+
+		// The phone locks right after sending: the answer comes while it is away.
+		const answer = browser.rpc("session/prompt", prompt(sessionId, "hi"));
+		browser.close();
+		await until(
+			() => harness.gateway.pairing(target)?.away === true,
+			5000,
+			"the browser to be away",
+		);
+		expect(harness.gateway.pairing(target)?.state).toBe("connected");
+
+		await browser.reconnect();
+		await browser.confirmed;
+		expect(browser.session?.resumed).toBe(true);
+		expect((await answer).result).toEqual({ stopReason: "end_turn" });
+		expect(browser.text()).toContain("dumb client: hi");
+		expect(harness.gateway.pairing(target)?.away).toBeUndefined();
+
+		const again = await browser.rpc(
+			"session/prompt",
+			prompt(sessionId, "again"),
+		);
+		expect(again.result).toEqual({ stopReason: "end_turn" });
+	} finally {
+		await harness.stop();
+	}
+}, 30_000);
+
+test("a remembered page that lost its state comes back as a new client", async () => {
+	const harness = await startHarness();
+
+	try {
+		const { link, sessionId } = await harness.connect();
+		const browser = await pair(harness, link, "c1", { remember: true });
+
+		await until(() => browser.staticKeyPair !== undefined);
+		await browser.reconnect({ resume: false });
+		await browser.confirmed;
+		expect(browser.session?.resumed).toBe(false);
+
+		await browser.rpc("initialize", { protocolVersion: 1 });
+		const loaded = await browser.rpc("session/load", {
+			sessionId,
+			cwd: harness.workDir,
+			mcpServers: [],
+		});
+		expect(loaded.error).toBeUndefined();
+		await until(() => browser.text().includes("old answer"));
+	} finally {
+		await harness.stop();
+	}
+}, 30_000);
+
+test("only the remembered browser can reconnect; one that is not remembered ends it", async () => {
+	const harness = await startHarness();
+	const target = { channelId: "web", conversationId: "c1" };
+
+	try {
+		const { link } = await harness.connect();
+		const browser = await pair(harness, link, "c1", { remember: true });
+
+		await until(() => browser.staticKeyPair !== undefined);
+		await browser.reconnect({ as: generateKeyPair() });
+		await until(
+			() => browser.session?.kind === "reconnect",
+			5000,
+			"the stranger's handshake",
+		);
+		// Message 1 doesn't decrypt on the agent side, so no message 2 comes.
+		await Bun.sleep(300);
+		expect(browser.session?.state).toBe("handshake");
+		expect(harness.gateway.pairing(target)).toMatchObject({
+			state: "connected",
+			away: true,
+		});
+
+		await browser.reconnect();
+		await browser.confirmed;
+		expect(harness.gateway.pairing(target)?.away).toBeUndefined();
+
+		const { link: other } = await harness.connect("c2");
+		const forgotten = await pair(harness, other, "c2");
+
+		forgotten.close();
+		await until(
+			() =>
+				harness.gateway.pairing({ channelId: "web", conversationId: "c2" }) ===
+				undefined,
 			5000,
 			"the connection to end",
 		);

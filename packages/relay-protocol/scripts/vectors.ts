@@ -7,6 +7,7 @@
  */
 
 import {
+	base64urlEncode,
 	bucketLength,
 	bytesToHex,
 	chunkMessage,
@@ -110,12 +111,23 @@ const frames = {
 			controlFrame(FrameType.PONG, Uint8Array.of(1, 2, 3, 4)),
 		),
 		frameVector("CONFIRMED", controlFrame(FrameType.CONFIRMED)),
+		frameVector(
+			"CONFIRMED of a reconnect, resuming after stream 7",
+			controlFrame(FrameType.CONFIRMED, Uint8Array.of(0, 0, 0, 7)),
+		),
+		frameVector(
+			"REMEMBER",
+			controlFrame(
+				FrameType.REMEMBER,
+				utf8Encode(base64urlEncode(pattern(32))),
+			),
+		),
 	],
 	invalid: [
 		{
 			description: "unknown type",
 			plaintext: withHeader(
-				{ type: 6, stream: 0, seq: 0, flags: 1, length: 0 },
+				{ type: 7, stream: 0, seq: 0, flags: 1, length: 0 },
 				256,
 			),
 		},
@@ -173,11 +185,19 @@ const frames = {
 			),
 		},
 		{
-			description: "CONFIRMED with a payload",
+			description: "CONFIRMED with a payload that is not a u32",
 			plaintext: withHeader(
 				{ type: 5, stream: 0, seq: 0, flags: 1, length: 1 },
 				256,
 				Uint8Array.of(1),
+			),
+		},
+		{
+			description: "REMEMBER with a short key",
+			plaintext: withHeader(
+				{ type: 6, stream: 0, seq: 0, flags: 1, length: 42 },
+				256,
+				utf8Encode(base64urlEncode(pattern(32)).slice(0, 42)),
 			),
 		},
 	],
