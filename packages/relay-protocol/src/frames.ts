@@ -3,7 +3,7 @@
  * and zero padding up to a size bucket.
  *
  *     offset size field
- *     0      1    type     1 ACP, 2 CLOSE, 3 PING, 4 PONG, 5 CONFIRMED
+ *     0      1    type     1 ACP, 2 CLOSE, 3 PING, 4 PONG, 5 CONFIRMED, 6 REMEMBER
  *     1      4    stream   u32 BE
  *     5      4    seq      u32 BE
  *     9      1    flags    bit0 FINAL
@@ -12,7 +12,7 @@
  *     14+n   pad  zero bytes up to the bucket
  *
  * One ACP message is one stream, cut into chunks if it does not fit in one
- * frame. Control frames (CLOSE, PING, PONG, CONFIRMED) are single frames
+ * frame. Control frames (CLOSE, PING, PONG, CONFIRMED, REMEMBER) are single frames
  * with stream 0, seq 0 and FINAL set; ACP streams count from 1.
  */
 
@@ -24,8 +24,10 @@ export const FrameType = {
 	CLOSE: 2,
 	PING: 3,
 	PONG: 4,
-	/** Agent side to browser: the user has confirmed the SAS words. */
+	/** Agent side to browser: the user has confirmed the SAS words, or a reconnect is confirmed. */
 	CONFIRMED: 5,
+	/** Browser to agent side, once, right after pairing: its static key for reconnecting. */
+	REMEMBER: 6,
 } as const;
 export type FrameType = (typeof FrameType)[keyof typeof FrameType];
 
@@ -38,6 +40,8 @@ export const MAX_CHUNK_PAYLOAD = MAX_PLAINTEXT_LENGTH - HEADER_LENGTH;
 export const MIN_BUCKET = 256;
 /** The largest ACP message a reassembler accepts by default: 32 MiB. */
 export const DEFAULT_MAX_MESSAGE_BYTES = 32 * 1024 * 1024;
+/** A 32-byte key in base64url without padding. */
+export const REMEMBER_PAYLOAD_LENGTH = 43;
 
 export interface Frame {
 	type: FrameType;
@@ -154,8 +158,18 @@ function checkFrameShape(frame: Frame): void {
 	if (frame.stream !== 0 || frame.seq !== 0 || !frame.final) {
 		throw new FrameError("A control frame has stream 0, seq 0 and FINAL set");
 	}
-	if (frame.type === FrameType.CONFIRMED && frame.payload.length > 0) {
-		throw new FrameError("CONFIRMED has no payload");
+	if (
+		frame.type === FrameType.CONFIRMED &&
+		frame.payload.length !== 0 &&
+		frame.payload.length !== 4
+	) {
+		throw new FrameError("CONFIRMED is empty, or a u32 when resuming");
+	}
+	if (
+		frame.type === FrameType.REMEMBER &&
+		frame.payload.length !== REMEMBER_PAYLOAD_LENGTH
+	) {
+		throw new FrameError("REMEMBER carries a 32-byte key in base64url");
 	}
 }
 
@@ -206,12 +220,15 @@ export function chunkMessage(
  * {@link FrameError}.
  */
 export class Reassembler {
-	private lastStream = 0;
 	private current:
 		| { stream: number; nextSeq: number; chunks: Uint8Array[]; size: number }
 		| undefined;
 
-	constructor(private readonly maxMessageBytes = DEFAULT_MAX_MESSAGE_BYTES) {}
+	/** `lastStream` is the stream received before, when a connection resumes. */
+	constructor(
+		private readonly maxMessageBytes = DEFAULT_MAX_MESSAGE_BYTES,
+		private lastStream = 0,
+	) {}
 
 	/** Whether a stream has started and not yet ended. */
 	get inStream(): boolean {

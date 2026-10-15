@@ -8,13 +8,22 @@ import {
 	FrameType,
 } from "./frames.ts";
 import { type PairingLink, parseLink, prologue } from "./link.ts";
-import { generateKeyPair, HandshakeState, type KeyPair } from "./noise.ts";
+import {
+	generateKeyPair,
+	HandshakeState,
+	type KeyPair,
+	type StaticKey,
+	staticKey,
+} from "./noise.ts";
 import {
 	type CloseEvent,
 	EphemeralCache,
 	initiator,
 	REKEY_INTERVAL,
 	type RelaySession,
+	ResumeBuffer,
+	reconnectInitiator,
+	reconnectResponder,
 	responder,
 } from "./session.ts";
 
@@ -432,4 +441,311 @@ describe("session", () => {
 		expect(p.closed.browser).toBeUndefined();
 		// 20,000 messages through the cipher: slow on a shared CI runner.
 	}, 30_000);
+});
+
+/** A pairing taken as far as CONFIRMED. */
+function paired(): Pair {
+	const p = pair();
+	p.browser.start();
+	p.agent.confirm();
+	return p;
+}
+
+describe("REMEMBER", () => {
+	test("the agent side gets the browser's key right after CONFIRMED", () => {
+		const p = paired();
+		const remembered: Uint8Array[] = [];
+		p.agent.onRemember = (key) => remembered.push(key);
+		const key = generateKeyPair().publicKey;
+		p.browser.remember(key);
+		expect(remembered.map(bytesToHex)).toEqual([bytesToHex(key)]);
+		p.browser.send("{}");
+		expect(p.received.agent).toEqual(["{}"]);
+	});
+
+	test("goes once, and only before the first ACP message", () => {
+		const p = paired();
+		p.browser.remember(generateKeyPair().publicKey);
+		expect(() => p.browser.remember(generateKeyPair().publicKey)).toThrow();
+		const late = paired();
+		late.browser.send("{}");
+		expect(() => late.browser.remember(generateKeyPair().publicKey)).toThrow();
+	});
+
+	test("not before CONFIRMED, and not from the agent side", () => {
+		const p = pair();
+		p.browser.start();
+		expect(() => p.browser.remember(generateKeyPair().publicKey)).toThrow();
+		p.agent.confirm();
+		expect(() => p.agent.remember(generateKeyPair().publicKey)).toThrow();
+	});
+});
+
+interface Reconnect {
+	browser: RelaySession;
+	agent: RelaySession;
+	wire: { from: "browser" | "agent"; data: Uint8Array }[];
+	received: { browser: string[]; agent: string[] };
+	closed: { browser?: CloseEvent; agent?: CloseEvent };
+	events: string[];
+}
+
+/** Settles pending promises, so an asynchronous DH can finish. */
+async function settle(): Promise<void> {
+	for (let index = 0; index < 10; index++) {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	}
+}
+
+/** A static key whose DH resolves later, as WebCrypto's does. */
+function slowStaticKey(keyPair: KeyPair): StaticKey {
+	const inner = staticKey(keyPair);
+	return {
+		publicKey: inner.publicKey,
+		dh: (publicKey) =>
+			new Promise((resolve, reject) =>
+				setTimeout(() => inner.dh(publicKey).then(resolve, reject), 1),
+			),
+	};
+}
+
+function reconnect(
+	options: {
+		deliver?: boolean;
+		agentKnows?: Uint8Array;
+		browserKey?: KeyPair;
+		resume?: boolean;
+		buffers?: { browser: ResumeBuffer; agent: ResumeBuffer };
+	} = {},
+): Reconnect {
+	const deliver = options.deliver ?? true;
+	const agentStatic = generateKeyPair();
+	const browserStatic = options.browserKey ?? generateKeyPair();
+	const room = crypto.getRandomValues(new Uint8Array(16));
+	const buffers = options.buffers ?? {
+		browser: new ResumeBuffer(),
+		agent: new ResumeBuffer(),
+	};
+	const webOrigin = "https://app.example";
+	const result = {
+		wire: [],
+		received: { browser: [], agent: [] },
+		closed: {},
+		events: [],
+	} as unknown as Reconnect;
+	result.browser = reconnectInitiator({
+		room,
+		webOrigin,
+		remoteStaticPublicKey: agentStatic.publicKey,
+		staticKey: slowStaticKey(browserStatic),
+		resume: options.resume ?? true,
+		buffer: buffers.browser,
+		send: (data) => {
+			result.wire.push({ from: "browser", data });
+			if (deliver) result.agent.receive(data);
+		},
+		onHandshake: () => result.events.push("browser words"),
+		onConfirmed: () => result.events.push("browser confirmed"),
+		onMessage: (message) => result.received.browser.push(message),
+		onClose: (event) => {
+			result.closed.browser = event;
+		},
+	});
+	result.agent = reconnectResponder({
+		staticKeyPair: agentStatic,
+		room,
+		webOrigin,
+		remoteStaticPublicKey: options.agentKnows ?? browserStatic.publicKey,
+		buffer: buffers.agent,
+		send: (data) => {
+			result.wire.push({ from: "agent", data });
+			if (deliver) result.browser.receive(data);
+		},
+		onHandshake: () => result.events.push("agent words"),
+		onKeyConfirmed: () => result.events.push("agent key confirmed"),
+		onMessage: (message) => result.received.agent.push(message),
+		onClose: (event) => {
+			result.closed.agent = event;
+		},
+	});
+	return result;
+}
+
+describe("reconnect", () => {
+	test("opens with no words, then carries ACP", async () => {
+		const r = reconnect();
+		r.browser.start();
+		await settle();
+		expect(r.agent.state).toBe("open");
+		expect(r.browser.state).toBe("open");
+		expect(r.events).toEqual(["agent key confirmed", "browser confirmed"]);
+		r.browser.send('{"jsonrpc":"2.0","id":1,"method":"initialize"}');
+		r.agent.send('{"jsonrpc":"2.0","id":1,"result":{}}');
+		expect(r.received.agent).toEqual([
+			'{"jsonrpc":"2.0","id":1,"method":"initialize"}',
+		]);
+		expect(r.received.browser).toEqual([
+			'{"jsonrpc":"2.0","id":1,"result":{}}',
+		]);
+		expect(() => r.agent.confirm()).toThrow();
+		expect(() => r.browser.remember(generateKeyPair().publicKey)).toThrow();
+	});
+
+	test("an agent side expecting another browser refuses it", async () => {
+		const r = reconnect({ agentKnows: generateKeyPair().publicKey });
+		r.browser.start();
+		await settle();
+		expect(r.agent.state).toBe("closed");
+		expect(r.closed.agent?.kind).toBe("error");
+		expect(r.browser.state).toBe("handshake");
+	});
+
+	test("a browser with another key is refused", async () => {
+		const known = generateKeyPair();
+		const r = reconnect({
+			agentKnows: known.publicKey,
+			browserKey: generateKeyPair(),
+		});
+		r.browser.start();
+		await settle();
+		expect(r.closed.agent?.kind).toBe("error");
+	});
+
+	test("a replayed message 1 never opens the session", async () => {
+		const r = reconnect({ deliver: false });
+		r.browser.start();
+		await settle();
+		const message1 = r.wire[0]!.data;
+		r.agent.receive(message1);
+		await settle();
+		// Message 2 went out, but without the browser's PING nothing opens.
+		expect(r.wire.filter((entry) => entry.from === "agent")).toHaveLength(1);
+		expect(r.agent.state).toBe("handshake");
+		expect(r.events).toEqual([]);
+	});
+
+	test("frames that arrive while a DH is pending are handled in order", async () => {
+		const r = reconnect({ deliver: false });
+		r.browser.start();
+		await settle();
+		r.agent.receive(r.wire[0]!.data);
+		await settle();
+		const message2 = r.wire[1]!.data;
+		r.browser.receive(message2);
+		// The browser is still waiting on its DH: hand it a bogus frame now.
+		r.browser.receive(new Uint8Array(64));
+		await settle();
+		expect(r.browser.state).toBe("closed");
+		expect(r.closed.browser?.kind).toBe("error");
+		// Its PING went out before the bogus frame was read.
+		expect(r.wire[2]?.from).toBe("browser");
+	});
+});
+
+describe("resuming", () => {
+	/** A pairing that exchanged one message each way, and its buffers. */
+	function history() {
+		const p = paired();
+		p.browser.send("b1");
+		p.agent.send("a1");
+		return { browser: p.browser.buffer, agent: p.agent.buffer };
+	}
+
+	test("streams carry on, and what was lost in flight is sent again", async () => {
+		const buffers = history();
+		// Sent while the browser was away, or into its dead socket.
+		buffers.agent.add("a2");
+		buffers.agent.add("a3");
+		buffers.browser.add("b2");
+		const r = reconnect({ buffers });
+		r.browser.start();
+		await settle();
+		expect(r.browser.resumed).toBe(true);
+		expect(r.agent.resumed).toBe(true);
+		expect(r.received.browser).toEqual(["a2", "a3"]);
+		expect(r.received.agent).toEqual(["b2"]);
+		r.browser.send("b3");
+		r.agent.send("a4");
+		expect(r.received.agent).toEqual(["b2", "b3"]);
+		expect(r.received.browser).toEqual(["a2", "a3", "a4"]);
+		expect(buffers.agent.received).toBe(3);
+		expect(buffers.browser.received).toBe(4);
+	});
+
+	test("nothing missed: nothing sent again", async () => {
+		const buffers = history();
+		const r = reconnect({ buffers });
+		r.browser.start();
+		await settle();
+		expect(r.agent.resumed).toBe(true);
+		expect(r.received).toEqual({ browser: [], agent: [] });
+		r.agent.send("a2");
+		expect(r.received.browser).toEqual(["a2"]);
+	});
+
+	test("a page that lost everything starts again from stream 1", async () => {
+		const buffers = history();
+		buffers.agent.add("a2");
+		const r = reconnect({
+			buffers: { browser: new ResumeBuffer(), agent: buffers.agent },
+			resume: false,
+		});
+		r.browser.start();
+		await settle();
+		expect(r.agent.state).toBe("open");
+		expect(r.agent.resumed).toBe(false);
+		expect(r.browser.resumed).toBe(false);
+		expect(r.received.browser).toEqual([]);
+		r.browser.send("fresh");
+		r.agent.send("fresh too");
+		expect(r.received.agent).toEqual(["fresh"]);
+		expect(r.received.browser).toEqual(["fresh too"]);
+	});
+
+	test("the agent side no longer has what the browser missed: both start again", async () => {
+		const buffers = { browser: new ResumeBuffer(), agent: new ResumeBuffer(4) };
+		const p = pair();
+		p.browser.start();
+		p.agent.confirm();
+		// The pairing used its own buffers; carry on with small ones.
+		buffers.agent.add("a1");
+		buffers.agent.add("a2-long");
+		buffers.agent.add("a3-long");
+		buffers.browser.received = 1;
+		const r = reconnect({ buffers });
+		r.browser.start();
+		await settle();
+		expect(r.agent.resumed).toBe(false);
+		expect(r.browser.resumed).toBe(false);
+		expect(r.browser.state).toBe("open");
+		expect(r.received.browser).toEqual([]);
+		expect(buffers.agent.nextStream).toBe(1);
+		expect(buffers.browser.nextStream).toBe(1);
+	});
+
+	test("the browser no longer has what the agent side missed: it fails, to start afresh", async () => {
+		const buffers = { browser: new ResumeBuffer(2), agent: new ResumeBuffer() };
+		buffers.browser.add("b1-long");
+		buffers.browser.add("b2-long");
+		const r = reconnect({ buffers });
+		r.browser.start();
+		await settle();
+		expect(r.closed.browser?.kind).toBe("error");
+	});
+
+	test("ResumeBuffer.after", () => {
+		const buffer = new ResumeBuffer();
+		expect(buffer.after(0)).toEqual([]);
+		expect(buffer.after(1)).toBeUndefined();
+		buffer.add("one");
+		buffer.add("two");
+		expect(buffer.after(0)?.map((entry) => entry.message)).toEqual([
+			"one",
+			"two",
+		]);
+		expect(buffer.after(1)?.map((entry) => entry.stream)).toEqual([2]);
+		expect(buffer.after(2)).toEqual([]);
+		expect(buffer.after(3)).toBeUndefined();
+		expect(buffer.after(-1)).toBeUndefined();
+	});
 });

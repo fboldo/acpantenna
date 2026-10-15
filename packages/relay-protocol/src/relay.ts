@@ -13,6 +13,8 @@ export interface RelayHello {
 	role: RelayRole;
 	/** Agent only: an optional plan credential. */
 	token?: string;
+	/** Browser only: a remembered browser coming back to reconnect. */
+	resume?: true;
 }
 
 export type RelayCloseReason =
@@ -78,18 +80,26 @@ export function parseRelayHello(text: string): RelayHello | undefined {
 	if (!value || typeof value !== "object") {
 		return undefined;
 	}
-	const { v, role, token } = value as {
+	const { v, role, token, resume } = value as {
 		v?: unknown;
 		role?: unknown;
 		token?: unknown;
+		resume?: unknown;
 	};
 	if (v !== RELAY_PROTOCOL_VERSION) {
 		return undefined;
 	}
-	if (role === "browser") {
-		return { v, role };
+	if (role === "browser" && token === undefined) {
+		if (resume === true) {
+			return { v, role, resume };
+		}
+		return resume === undefined ? { v, role } : undefined;
 	}
-	if (role === "agent" && (token === undefined || typeof token === "string")) {
+	if (
+		role === "agent" &&
+		resume === undefined &&
+		(token === undefined || typeof token === "string")
+	) {
 		return token === undefined ? { v, role } : { v, role, token };
 	}
 	return undefined;
