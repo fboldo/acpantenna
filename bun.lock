@@ -52,6 +52,13 @@
         "@acpantenna/relay-protocol": "workspace:*",
       },
     },
+    "packages/channel-telegram": {
+      "name": "@acpantenna/channel-telegram",
+      "version": "0.0.0",
+      "dependencies": {
+        "@acpantenna/channel": "workspace:*",
+      },
+    },
     "packages/channel-webhook": {
       "name": "@acpantenna/channel-webhook",
       "version": "0.0.0",
@@ -69,6 +76,7 @@
         "@acpantenna/channel": "workspace:*",
         "@acpantenna/channel-matrix": "workspace:*",
         "@acpantenna/channel-relay": "workspace:*",
+        "@acpantenna/channel-telegram": "workspace:*",
         "@acpantenna/channel-webhook": "workspace:*",
         "@acpantenna/config": "workspace:*",
         "@acpantenna/core": "workspace:*",
@@ -129,6 +137,8 @@
     "@acpantenna/channel-matrix": ["@acpantenna/channel-matrix@workspace:packages/channel-matrix"],
 
     "@acpantenna/channel-relay": ["@acpantenna/channel-relay@workspace:packages/channel-relay"],
+
+    "@acpantenna/channel-telegram": ["@acpantenna/channel-telegram@workspace:packages/channel-telegram"],
 
     "@acpantenna/channel-webhook": ["@acpantenna/channel-webhook@workspace:packages/channel-webhook"],
 

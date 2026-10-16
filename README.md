@@ -66,10 +66,11 @@ npx acpantenna connect my-agent
 | --- | --- |
 | [latch.im](#latchim-the-built-in-channel) | Built in, and what `connect` uses unless told otherwise. A web client on any device, end-to-end encrypted through a relay; the browser is a full ACP client of the session, and acpantenna filters what it may do. |
 | [Matrix](packages/channel-matrix/README.md) | Rooms on matrix.org or your own homeserver, end-to-end encrypted. Permissions answered with a reaction, replies streamed into one message, files the agent sends uploaded. |
+| [Telegram](packages/channel-telegram/README.md) | A bot from @BotFather, in a private chat, a group or a forum topic. Permissions answered with inline buttons, replies streamed into one message, files the agent sends uploaded. |
 | Webhook | JSON in at `POST /channels/<id>/events`, replies at `GET /channels/<id>/outbox`. For local testing and simple integrations. |
 | Relay | The same as latch.im, with a relay and web client of your own. |
 
-`npx acpantenna setup` adds Matrix or a webhook to your config. `npx acpantenna channels --json` describes every channel type and its settings. A channel is a small adapter on the channel SDK in [`packages/channel`](packages/channel/); the ones above show how to write one.
+`npx acpantenna setup` adds Matrix, Telegram or a webhook to your config. `npx acpantenna channels --json` describes every channel type and its settings. A channel is a small adapter on the channel SDK in [`packages/channel`](packages/channel/); the ones above show how to write one.
 
 ## latch.im, the built-in channel
 
@@ -184,7 +185,7 @@ acpantenna is a Bun workspace:
 | `packages/core` | The gateway: routing, sessions, connections, delivery |
 | `packages/acp` | The ACP client over stdio |
 | `packages/channel` | The channel SDK |
-| `packages/channel-matrix`, `packages/channel-webhook`, `packages/channel-relay` | The channels; the relay one with its filtering ACP proxy and a development relay |
+| `packages/channel-matrix`, `packages/channel-telegram`, `packages/channel-webhook`, `packages/channel-relay` | The channels; the relay one with its filtering ACP proxy and a development relay |
 | `packages/relay-protocol` | The relay's wire protocol: Noise, frames, the link and the words. It runs in browsers too |
 | `packages/config` | Config types, loading and presets |
 | `packages/cli` | The `acpantenna` command |

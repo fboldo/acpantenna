@@ -16,6 +16,9 @@
 			"@acpantenna/channel-relay/dev-relay": [
 				"./packages/channel-relay/src/dev-relay.ts"
 			],
+			"@acpantenna/channel-telegram": [
+				"./packages/channel-telegram/src/index.ts"
+			],
 			"@acpantenna/channel-webhook": [
 				"./packages/channel-webhook/src/index.ts"
 			],
