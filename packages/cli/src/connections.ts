@@ -570,17 +570,21 @@ export async function ensureServer(
 		);
 	}
 
-	// Another CLI is starting it right now: wait for that one.
+	// Another CLI is starting it right now: wait for that one. Or it is
+	// stopping, its socket closed but its channels not yet: wait for it to go,
+	// then start a new one.
 	const starting = readPid(pidPath);
 
 	if (starting !== undefined && isAlive(starting)) {
 		await waitFor(
-			() => isServing(socketPath),
+			async () => (await isServing(socketPath)) || !isAlive(starting),
 			SERVER_START_TIMEOUT_MS,
 			`The acpantenna server (pid ${starting}) did not start.`,
 		);
 
-		return socketPath;
+		if (await isServing(socketPath)) {
+			return socketPath;
+		}
 	}
 
 	const logPath = serverLogPath(socketPath);
