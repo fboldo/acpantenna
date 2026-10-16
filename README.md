@@ -62,6 +62,8 @@ npx acpantenna connect my-agent
 
 ## Channels
 
+<p align="center"><img src="docs/channels.svg" alt="Channels: latch.im (the default), Matrix, Discord, Telegram, IRC and a webhook" width="720"></p>
+
 | Channel | |
 | --- | --- |
 | [latch.im](#latchim-the-built-in-channel) | Built in, and what `connect` uses unless told otherwise. A web client on any device, end-to-end encrypted through a relay; the browser is a full ACP client of the session, and acpantenna filters what it may do. |
@@ -73,6 +75,8 @@ npx acpantenna connect my-agent
 | Relay | The same as latch.im, with a relay and web client of your own. |
 
 `npx acpantenna setup` adds Matrix, Discord, Telegram, IRC or a webhook to your config. `npx acpantenna channels --json` describes every channel type and its settings. A channel is a small adapter on the channel SDK in [`packages/channel`](packages/channel/); the ones above show how to write one.
+
+<sub>Matrix, Discord and Telegram logos from [Simple Icons](https://simpleicons.org) (CC0); they are trademarks of their owners.</sub>
 
 ## latch.im, the built-in channel
 
