@@ -33,6 +33,7 @@ import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-base";
 import {
 	AcpAntennaGateway,
 	channelStateDir,
+	isEventAllowed,
 	isMappingExpired,
 	isWithinDays,
 	parseReservedCommand,
@@ -889,6 +890,27 @@ test("a replayed event does not double-deliver to an idempotent channel", async 
 	} finally {
 		await gateway.stop();
 	}
+});
+
+test("an allowlist may name a conversation's parent instead of it", () => {
+	const config = {
+		permissions: {
+			toolCalls: "deny" as const,
+			interactionTimeoutSeconds: 120,
+			inbound: { mode: "allowlist" as const, allow: ["guild-1"] },
+		},
+	};
+	const event = createTextInboundEvent({
+		text: "hi",
+		conversationId: "channel-1",
+		senderId: "user-1",
+	});
+
+	expect(isEventAllowed(config, event)).toBe(false);
+	event.conversation.parentIds = ["guild-1", "channel-0"];
+	expect(isEventAllowed(config, event)).toBe(true);
+	event.conversation.parentIds = ["guild-2"];
+	expect(isEventAllowed(config, event)).toBe(false);
 });
 
 test("selects reject/allow options by kind, preferring the once variant", () => {

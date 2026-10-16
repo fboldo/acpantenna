@@ -11,6 +11,9 @@
 		"paths": {
 			"@acpantenna/acp": ["./packages/acp/src/index.ts"],
 			"@acpantenna/channel": ["./packages/channel/src/index.ts"],
+			"@acpantenna/channel-discord": [
+				"./packages/channel-discord/src/index.ts"
+			],
 			"@acpantenna/channel-matrix": ["./packages/channel-matrix/src/index.ts"],
 			"@acpantenna/channel-relay": ["./packages/channel-relay/src/index.ts"],
 			"@acpantenna/channel-relay/dev-relay": [

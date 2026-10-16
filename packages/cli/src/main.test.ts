@@ -32,6 +32,7 @@ test("describes every registered channel type, with secrets marked", () => {
 			config: { type: "object", properties: {} },
 		},
 		expect.objectContaining({ type: "matrix", name: "Matrix" }),
+		expect.objectContaining({ type: "discord", name: "Discord" }),
 		expect.objectContaining({
 			type: "relay",
 			capabilities: { acp: true },

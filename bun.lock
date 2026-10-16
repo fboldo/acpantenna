@@ -33,6 +33,13 @@
       "name": "@acpantenna/channel",
       "version": "0.0.0",
     },
+    "packages/channel-discord": {
+      "name": "@acpantenna/channel-discord",
+      "version": "0.0.0",
+      "dependencies": {
+        "@acpantenna/channel": "workspace:*",
+      },
+    },
     "packages/channel-matrix": {
       "name": "@acpantenna/channel-matrix",
       "version": "0.0.0",
@@ -67,6 +74,7 @@
       },
       "dependencies": {
         "@acpantenna/channel": "workspace:*",
+        "@acpantenna/channel-discord": "workspace:*",
         "@acpantenna/channel-matrix": "workspace:*",
         "@acpantenna/channel-relay": "workspace:*",
         "@acpantenna/channel-webhook": "workspace:*",
@@ -125,6 +133,8 @@
     "@acpantenna/acp-dumb-client": ["@acpantenna/acp-dumb-client@workspace:packages/acp-dumb-client"],
 
     "@acpantenna/channel": ["@acpantenna/channel@workspace:packages/channel"],
+
+    "@acpantenna/channel-discord": ["@acpantenna/channel-discord@workspace:packages/channel-discord"],
 
     "@acpantenna/channel-matrix": ["@acpantenna/channel-matrix@workspace:packages/channel-matrix"],
 
