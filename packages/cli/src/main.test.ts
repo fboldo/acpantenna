@@ -38,6 +38,11 @@ test("describes every registered channel type, with secrets marked", () => {
 			capabilities: { acp: true },
 			config: expect.objectContaining({ required: ["relayUrl", "webOrigin"] }),
 		}),
+		expect.objectContaining({
+			type: "telegram",
+			name: "Telegram",
+			config: expect.objectContaining({ required: ["botToken"] }),
+		}),
 		{
 			type: "chat",
 			name: "Chat",
@@ -92,4 +97,18 @@ test("the Matrix channel is built in, its token marked secret", () => {
 	expect(matrix?.config.properties.accessToken?.secret).toBe(true);
 	expect(matrix?.config.properties.storePassphrase?.secret).toBe(true);
 	expect(matrix?.config.properties.userId?.secret).toBeUndefined();
+});
+
+test("the Telegram channel is built in, its token marked secret", () => {
+	const telegram = describeChannels(builtinChannels).channels.find(
+		(channel) => channel.type === "telegram",
+	);
+
+	expect(telegram?.capabilities).toMatchObject({
+		buttons: true,
+		attachments: true,
+		toolCalls: true,
+	});
+	expect(telegram?.config.properties.botToken?.secret).toBe(true);
+	expect(telegram?.config.properties.apiUrl?.secret).toBeUndefined();
 });
