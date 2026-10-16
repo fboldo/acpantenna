@@ -1,5 +1,6 @@
 import type { ChannelDefinition } from "@acpantenna/channel";
 import { discordChannel } from "@acpantenna/channel-discord";
+import { ircChannel } from "@acpantenna/channel-irc";
 import { matrixChannel } from "@acpantenna/channel-matrix";
 import { relayChannel } from "@acpantenna/channel-relay";
 import { telegramChannel } from "@acpantenna/channel-telegram";
@@ -10,6 +11,7 @@ export const builtinChannels: ChannelDefinition[] = [
 	webhookChannel,
 	matrixChannel,
 	discordChannel,
-	relayChannel,
 	telegramChannel,
+	ircChannel,
+	relayChannel,
 ];

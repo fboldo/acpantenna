@@ -34,14 +34,19 @@ test("describes every registered channel type, with secrets marked", () => {
 		expect.objectContaining({ type: "matrix", name: "Matrix" }),
 		expect.objectContaining({ type: "discord", name: "Discord" }),
 		expect.objectContaining({
-			type: "relay",
-			capabilities: { acp: true },
-			config: expect.objectContaining({ required: ["relayUrl", "webOrigin"] }),
-		}),
-		expect.objectContaining({
 			type: "telegram",
 			name: "Telegram",
 			config: expect.objectContaining({ required: ["botToken"] }),
+		}),
+		expect.objectContaining({
+			type: "irc",
+			name: "IRC",
+			config: expect.objectContaining({ required: ["server", "nick"] }),
+		}),
+		expect.objectContaining({
+			type: "relay",
+			capabilities: { acp: true },
+			config: expect.objectContaining({ required: ["relayUrl", "webOrigin"] }),
 		}),
 		{
 			type: "chat",
