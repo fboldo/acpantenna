@@ -1,9 +1,9 @@
 ---
-name: acpantenna
-description: Carry the current coding-agent session over to a phone or any browser with acpantenna, end-to-end encrypted, through a one-time link and QR code. Use when the user wants to continue this session on their phone, tablet or another computer, keep working away from their desk, hand the session off to a browser, or share it through latch.im; also when they ask to list or disconnect acpantenna connections. Works for Claude Code, Codex, OpenCode and any ACP agent.
+name: continue-on-phone
+description: Continue the current coding-agent session on your phone, mobile or any browser — remote access to Claude Code, Codex or OpenCode away from your desk — with acpantenna, end-to-end encrypted, through a one-time link and QR code. Use when the user wants to continue this session on their phone, tablet or another computer, keep working away from their desk, hand the session off to a browser, or share it through latch.im; also when they ask to list or disconnect acpantenna connections. Works for Claude Code, Codex, OpenCode and any ACP agent.
 ---
 
-# acpantenna
+# Continue on your phone
 
 [acpantenna](https://github.com/fboldo/acpantenna) gives an agent session a link. Opened in a browser — the web client at latch.im unless the user's config says otherwise — it carries on the same session there, end-to-end encrypted. The relay in between only forwards ciphertext.
 

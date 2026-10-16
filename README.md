@@ -37,7 +37,7 @@ npx acpantenna ls              # what is connected
 npx acpantenna kill 9f2c       # disconnect (a unique prefix will do); the session itself is kept
 ```
 
-**Or ask the agent.** With the [skill](skills/acpantenna/SKILL.md) installed, tell it "continue this on my phone": it forks the session it is in, gives you the link, and asks you about the words.
+**Or ask the agent.** With the [skill](skills/continue-on-phone/SKILL.md) installed, tell it "continue this on my phone": it forks the session it is in, gives you the link, and asks you about the words.
 
 ```bash
 npx skills add fboldo/acpantenna
