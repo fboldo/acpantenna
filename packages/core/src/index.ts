@@ -3590,8 +3590,8 @@ function normalizeRoutePath(path: string): string {
 		: `/${withoutTrailingSlash}`;
 }
 
-function isEventAllowed(
-	channelConfig: ResolvedChannelConfig,
+export function isEventAllowed(
+	channelConfig: Pick<ResolvedChannelConfig, "permissions">,
 	event: ChannelInboundEvent,
 ): boolean {
 	if (event.sender.trusted) {
@@ -3611,7 +3611,10 @@ function isEventAllowed(
 	return (
 		inbound.allow.includes("*") ||
 		inbound.allow.includes(event.sender.id) ||
-		inbound.allow.includes(event.conversation.id)
+		inbound.allow.includes(event.conversation.id) ||
+		(event.conversation.parentIds ?? []).some((id) =>
+			inbound.allow.includes(id),
+		)
 	);
 }
 

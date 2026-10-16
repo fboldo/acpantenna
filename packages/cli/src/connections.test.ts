@@ -371,3 +371,47 @@ test("a server of another version is replaced by connect's own, which reports th
 		await removeDir(root);
 	}
 }, 30_000);
+
+test("a server still stopping, its socket closed and its pid file kept, is waited out and a new one started", async () => {
+	const root = mkdtempSync(join(tmpdir(), "acpantenna-stopping-"));
+	const configPath = serverConfig(root);
+	const stateDir = join(root, "state");
+	const socketPath = serverSocketPath(stateDir, configPath);
+	// The stopping server: alive for a moment longer, holding the pid file.
+	const stopping = Bun.spawn({
+		cmd: [process.execPath, "-e", "await Bun.sleep(1000)"],
+	});
+
+	mkdirSync(dirname(socketPath), { recursive: true });
+	writeFileSync(serverPidPath(socketPath), String(stopping.pid));
+
+	try {
+		const started = Date.now();
+
+		expect(
+			await ensureServer(configPath, {
+				entry: join(import.meta.dir, "main.ts"),
+				stateDir,
+			}),
+		).toBe(socketPath);
+		expect(Date.now() - started).toBeLessThan(10_000);
+
+		const health = (await (
+			await fetch("http://localhost/health", { unix: socketPath })
+		).json()) as { pid: number };
+
+		expect(health.pid).not.toBe(stopping.pid);
+		await fetch("http://localhost/shutdown", {
+			unix: socketPath,
+			method: "POST",
+		});
+		const deadline = Date.now() + 10_000;
+		while (Date.now() < deadline && isAlive(health.pid)) {
+			await Bun.sleep(50);
+		}
+	} finally {
+		stopping.kill();
+		await removeDir(serversDir(stateDir));
+		await removeDir(root);
+	}
+}, 30_000);

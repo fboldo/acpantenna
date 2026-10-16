@@ -111,6 +111,45 @@ const matrixAnswers = [
 	"@me:matrix.org, @friend:matrix.org", // who may talk
 ];
 
+test("setup writes a Telegram channel: its token in the keychain, numeric ids allowed", async () => {
+	const { root, env, configPath } = withDirs();
+	const script = scripted([
+		"telegram", // kind of channel
+		ENTER, // name: telegram
+		"123456789:AAE-token", // bot token
+		false, // adjust optional settings
+		"42", // default conversation: a private chat
+		"42", // who may talk: a user id
+	]);
+	const keychain = memoryKeychain();
+
+	try {
+		await setupCommand({}, script.prompter, {
+			channels: builtinChannels,
+			secrets: keychain.store,
+			env,
+		});
+
+		expect(script.answers).toEqual([]);
+		expect(JSON.parse(readFileSync(configPath, "utf8")).channels).toEqual({
+			telegram: {
+				type: "telegram",
+				botToken: keychainReference("telegram.botToken"),
+				defaultConversation: "42",
+				permissions: {
+					inbound: { mode: "allowlist", allow: ["42"] },
+					toolCalls: "ask",
+				},
+			},
+		});
+		expect(Object.fromEntries(keychain.kept)).toEqual({
+			"telegram.botToken": "123456789:AAE-token",
+		});
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("setup writes a Matrix channel the CLI can load, its secrets in the keychain", async () => {
 	const { root, env, configPath } = withDirs();
 	const script = scripted([...matrixAnswers]);

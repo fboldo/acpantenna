@@ -19,8 +19,11 @@
 	},
 	"dependencies": {
 		"@acpantenna/channel": "workspace:*",
+		"@acpantenna/channel-discord": "workspace:*",
+		"@acpantenna/channel-irc": "workspace:*",
 		"@acpantenna/channel-matrix": "workspace:*",
 		"@acpantenna/channel-relay": "workspace:*",
+		"@acpantenna/channel-telegram": "workspace:*",
 		"@acpantenna/channel-webhook": "workspace:*",
 		"@acpantenna/config": "workspace:*",
 		"@acpantenna/core": "workspace:*",

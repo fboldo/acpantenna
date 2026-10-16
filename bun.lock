@@ -33,6 +33,20 @@
       "name": "@acpantenna/channel",
       "version": "0.0.0",
     },
+    "packages/channel-discord": {
+      "name": "@acpantenna/channel-discord",
+      "version": "0.0.0",
+      "dependencies": {
+        "@acpantenna/channel": "workspace:*",
+      },
+    },
+    "packages/channel-irc": {
+      "name": "@acpantenna/channel-irc",
+      "version": "0.0.0",
+      "dependencies": {
+        "@acpantenna/channel": "workspace:*",
+      },
+    },
     "packages/channel-matrix": {
       "name": "@acpantenna/channel-matrix",
       "version": "0.0.0",
@@ -52,6 +66,13 @@
         "@acpantenna/relay-protocol": "workspace:*",
       },
     },
+    "packages/channel-telegram": {
+      "name": "@acpantenna/channel-telegram",
+      "version": "0.0.0",
+      "dependencies": {
+        "@acpantenna/channel": "workspace:*",
+      },
+    },
     "packages/channel-webhook": {
       "name": "@acpantenna/channel-webhook",
       "version": "0.0.0",
@@ -67,8 +88,11 @@
       },
       "dependencies": {
         "@acpantenna/channel": "workspace:*",
+        "@acpantenna/channel-discord": "workspace:*",
+        "@acpantenna/channel-irc": "workspace:*",
         "@acpantenna/channel-matrix": "workspace:*",
         "@acpantenna/channel-relay": "workspace:*",
+        "@acpantenna/channel-telegram": "workspace:*",
         "@acpantenna/channel-webhook": "workspace:*",
         "@acpantenna/config": "workspace:*",
         "@acpantenna/core": "workspace:*",
@@ -126,9 +150,15 @@
 
     "@acpantenna/channel": ["@acpantenna/channel@workspace:packages/channel"],
 
+    "@acpantenna/channel-discord": ["@acpantenna/channel-discord@workspace:packages/channel-discord"],
+
+    "@acpantenna/channel-irc": ["@acpantenna/channel-irc@workspace:packages/channel-irc"],
+
     "@acpantenna/channel-matrix": ["@acpantenna/channel-matrix@workspace:packages/channel-matrix"],
 
     "@acpantenna/channel-relay": ["@acpantenna/channel-relay@workspace:packages/channel-relay"],
+
+    "@acpantenna/channel-telegram": ["@acpantenna/channel-telegram@workspace:packages/channel-telegram"],
 
     "@acpantenna/channel-webhook": ["@acpantenna/channel-webhook@workspace:packages/channel-webhook"],
 

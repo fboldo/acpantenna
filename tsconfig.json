@@ -11,10 +11,17 @@
 		"paths": {
 			"@acpantenna/acp": ["./packages/acp/src/index.ts"],
 			"@acpantenna/channel": ["./packages/channel/src/index.ts"],
+			"@acpantenna/channel-discord": [
+				"./packages/channel-discord/src/index.ts"
+			],
+			"@acpantenna/channel-irc": ["./packages/channel-irc/src/index.ts"],
 			"@acpantenna/channel-matrix": ["./packages/channel-matrix/src/index.ts"],
 			"@acpantenna/channel-relay": ["./packages/channel-relay/src/index.ts"],
 			"@acpantenna/channel-relay/dev-relay": [
 				"./packages/channel-relay/src/dev-relay.ts"
+			],
+			"@acpantenna/channel-telegram": [
+				"./packages/channel-telegram/src/index.ts"
 			],
 			"@acpantenna/channel-webhook": [
 				"./packages/channel-webhook/src/index.ts"

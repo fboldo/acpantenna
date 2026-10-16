@@ -45,6 +45,12 @@ export interface ChannelConversation {
 	id: string;
 	type?: "dm" | "group" | "room" | "thread" | "unknown";
 	title?: string;
+	/**
+	 * What the conversation sits inside: a server, the channel a thread was
+	 * started in. An inbound allowlist may name one of these instead of the
+	 * conversation itself, so allowing a server allows its channels.
+	 */
+	parentIds?: string[];
 }
 
 export interface ChannelSender {

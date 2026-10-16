@@ -14,7 +14,7 @@
 - **Your account.** Claude Code and Codex run through their official ACP adapters, and OpenCode as itself, on the subscription or key you are logged in with.
 - **End-to-end encrypted.** The browser and your machine agree on keys through the link; the relay between them forwards ciphertext it cannot read.
 - **Asks before it acts.** When the agent wants to run a command or edit a file, the browser asks you.
-- **Nothing to set up.** The web client at [latch.im](https://latch.im) is built in. Matrix, a webhook, or a channel of your own are there when you want them.
+- **Nothing to set up.** The web client at [latch.im](https://latch.im) is built in. Matrix, Discord, Telegram, IRC, a webhook, or a channel of your own are there when you want them.
 
 ## Quick start
 
@@ -83,14 +83,21 @@ npx acpantenna connect my-agent
 
 ## Channels
 
+<p align="center"><img src="docs/channels.svg" alt="Channels: latch.im (the default), Matrix, Discord, Telegram, IRC and a webhook" width="720"></p>
+
 | Channel | |
 | --- | --- |
 | [latch.im](#latchim-the-built-in-channel) | Built in, and what `connect` uses unless told otherwise. A web client on any device, end-to-end encrypted through a relay; the browser is a full ACP client of the session, and acpantenna filters what it may do. |
 | [Matrix](packages/channel-matrix/README.md) | Rooms on matrix.org or your own homeserver, end-to-end encrypted. Permissions answered with a reaction, replies streamed into one message, files the agent sends uploaded. |
+| [Discord](packages/channel-discord/README.md) | Direct messages, server channels and threads. Permissions and questions answered with buttons (and a form), replies streamed into one message, files the agent sends uploaded. |
+| [Telegram](packages/channel-telegram/README.md) | A bot from @BotFather, in a private chat, a group or a forum topic. Permissions answered with inline buttons, replies streamed into one message, files the agent sends uploaded. |
+| [IRC](packages/channel-irc/README.md) | Channels and private messages on any IRC network, over TLS with SASL. Senders allowed by services account or hostmask, permissions answered with a number, long replies held for "more". |
 | Webhook | JSON in at `POST /channels/<id>/events`, replies at `GET /channels/<id>/outbox`. For local testing and simple integrations. |
 | Relay | The same as latch.im, with a relay and web client of your own. |
 
-`npx acpantenna setup` adds Matrix or a webhook to your config. `npx acpantenna channels --json` describes every channel type and its settings. A channel is a small adapter on the channel SDK in [`packages/channel`](packages/channel/); the ones above show how to write one.
+`npx acpantenna setup` adds Matrix, Discord, Telegram, IRC or a webhook to your config. `npx acpantenna channels --json` describes every channel type and its settings. A channel is a small adapter on the channel SDK in [`packages/channel`](packages/channel/); the ones above show how to write one.
+
+<sub>Matrix, Discord and Telegram logos from [Simple Icons](https://simpleicons.org) (CC0); they are trademarks of their owners.</sub>
 
 ## latch.im, the built-in channel
 
@@ -205,7 +212,7 @@ acpantenna is a Bun workspace:
 | `packages/core` | The gateway: routing, sessions, connections, delivery |
 | `packages/acp` | The ACP client over stdio |
 | `packages/channel` | The channel SDK |
-| `packages/channel-matrix`, `packages/channel-webhook`, `packages/channel-relay` | The channels; the relay one with its filtering ACP proxy and a development relay |
+| `packages/channel-matrix`, `packages/channel-discord`, `packages/channel-telegram`, `packages/channel-irc`, `packages/channel-webhook`, `packages/channel-relay` | The channels; the relay one with its filtering ACP proxy and a development relay |
 | `packages/relay-protocol` | The relay's wire protocol: Noise, frames, the link and the words. It runs in browsers too |
 | `packages/config` | Config types, loading and presets |
 | `packages/cli` | The `acpantenna` command |
