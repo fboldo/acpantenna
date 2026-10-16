@@ -20,6 +20,15 @@
 
 You need Node 18 or newer on Linux, macOS or Windows (10 1803 or later), and the agent you want to connect, logged in (`claude`, `codex`). The package brings its own [Bun](https://bun.sh).
 
+Run it with `npx`, without installing anything, or install it once as a global command:
+
+```bash
+npm install -g acpantenna
+acpantenna connect claude      # the same commands, without npx
+```
+
+The examples below use `npx`; with a global install, leave it off.
+
 **1. Connect.** From the project directory:
 
 ```bash
