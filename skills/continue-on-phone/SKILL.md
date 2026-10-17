@@ -1,11 +1,13 @@
 ---
 name: continue-on-phone
-description: Continue the current coding-agent session on your phone, mobile or any browser — remote access to Claude Code, Codex or OpenCode away from your desk — with acpantenna, end-to-end encrypted, through a one-time link and QR code. Use when the user wants to continue this session on their phone, tablet or another computer, keep working away from their desk, hand the session off to a browser, or share it through latch.im; also when they ask to list or disconnect acpantenna connections. Works for Claude Code, Codex, OpenCode and any ACP agent.
+description: Continue the current agent session on your phone, mobile or any browser — remote access to a coding agent (Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Cline or any other that speaks ACP) away from your desk — with acpantenna, end-to-end encrypted, through a one-time link and QR code. Use when the user wants to continue this session on their phone, tablet or another computer, keep working away from their desk, hand the session off to a browser, or share it through latch.im; also when they ask to list or disconnect acpantenna connections.
 ---
 
 # Continue on your phone
 
 [acpantenna](https://github.com/fboldo/acpantenna) gives an agent session a link. Opened in a browser — the web client at latch.im unless the user's config says otherwise — it carries on the same session there, end-to-end encrypted. The relay in between only forwards ciphertext.
+
+It works for any agent that speaks [ACP](https://agentclientprotocol.com): Claude Code, Codex and OpenCode are built in, and Gemini CLI, GitHub Copilot, Cursor, Qwen Code, Kimi CLI, Mistral Vibe, Cline or anything else is one entry in the config (see [Other agents](#other-agents)).
 
 Needs Node 18 or newer. Run it as `npx -y acpantenna`; the package brings its own Bun.
 
@@ -15,28 +17,31 @@ Pairing ends with **four words** shown in the browser and in the terminal. Only 
 
 ## Carry this session over
 
-### 1. Find the agent and its session id
+### 1. Name the agent, find the session id
 
-| You are | Agent | Session id |
-| --- | --- | --- |
-| Claude Code | `claude` | `$CLAUDE_CODE_SESSION_ID` |
-| Codex | `codex` | `$CODEX_THREAD_ID` if set; else the id at the end of the newest `~/.codex/sessions/**/rollout-*.jsonl` |
-| OpenCode | `opencode` | the current session in `opencode session list` |
+`connect` wants two things: what your agent goes by — `claude`, `codex`, `opencode`, or the id its entry in the config uses — and the id of the session you are in. That id is the one your own CLI would resume:
 
-Check the id is not empty before going on. If you cannot find it, leave out `--session-id` and `--fork`: the browser gets a new session in this directory, and say so to the user.
+| You are | `connect` with | Your session id | Back at your desk |
+| --- | --- | --- | --- |
+| Claude Code | `claude` | `$CLAUDE_CODE_SESSION_ID` | `claude --resume <id>` |
+| Codex | `codex` | `$CODEX_THREAD_ID` if set; else the id at the end of the newest `~/.codex/sessions/**/rollout-*.jsonl` | `codex resume <id>` |
+| OpenCode | `opencode` | the current one in `opencode session list` | `opencode --session <id>` |
+| Anything else | the id in your config | your agent's own: an environment variable, a session-list command, or its session store | your agent's own resume command |
+
+Check the id is not empty before going on, and that the agent behind `connect` reads the same session store — the built-in three do, an adapter someone else wrote may not. If you cannot find an id, or cannot tell whether it is the one the adapter reads, leave out `--session-id` and `--fork`: the browser gets a new session in this directory, and say so to the user.
 
 ### 2. Fork, or hand off
 
 This session is still running here, and two processes writing to one session drift apart. So:
 
-- **Fork** (the default when you run it): `--session-id <id> --fork`. The browser gets a copy of the conversation so far; this terminal session carries on separately.
+- **Fork** (what you run, by default): `--session-id <id> --fork`. The browser gets a copy of the conversation so far; this terminal session carries on separately. Forking needs the agent to support ACP's `session/fork`: if it does not, `connect` fails with `Agent "<agent>" cannot fork sessions.` — hand off instead.
 - **Hand off**, if the user wants the very same session on the phone: they quit here first, then run in their terminal:
 
   ```bash
   npx -y acpantenna connect <agent> --session-id <id>
   ```
 
-  Give them that line with the id filled in, and stop: you cannot run it after they have quit you. Back at the desk, `claude --resume <id>` (or `codex resume <id>`, `opencode --session <id>`) shows everything said in the browser.
+  Give them that line with the agent and id filled in, and stop: you cannot run it after they have quit you. Back at the desk, resume it your agent's own way — the last column above.
 
 ### 3. Connect
 
@@ -45,13 +50,13 @@ This session is still running here, and two processes writing to one session dri
 ```bash
 dir=$(mktemp -d)
 touch "$dir/answer"
-(npx -y acpantenna connect claude --session-id "$CLAUDE_CODE_SESSION_ID" --fork \
+(npx -y acpantenna connect <agent> --session-id "<id>" --fork \
   < <(timeout 11m tail -f "$dir/answer") >"$dir/out" 2>&1
  echo "exit $?" >>"$dir/out") &
 echo "$dir"
 ```
 
-That needs bash or zsh. Keep `$dir`; every later step needs it. Without a terminal, `connect` prints everything to `$dir/out` and draws no QR code.
+Put your own agent and id in — `connect claude --session-id "$CLAUDE_CODE_SESSION_ID"` for Claude Code, for instance. That needs bash or zsh. Keep `$dir`; every later step needs it. Without a terminal, `connect` prints everything to `$dir/out` and draws no QR code. If you cannot run a process in the background — no shell, or no process substitution — give the user that `connect` line to run in their own terminal and stop there; they answer about the words themselves, the way steps 5 and 6 describe.
 
 ### 4. Give the user the link
 
@@ -85,6 +90,20 @@ npx -y acpantenna kill <session-id>
 ```
 
 An `exit` other than 0 means it did not connect; show the user the last lines of `$dir/out`. Then `rm -rf "$dir"`.
+
+## Other agents
+
+Claude Code, Codex and OpenCode are built in: `connect claude`, `connect codex`, `connect opencode`. Any other agent that speaks ACP — Gemini CLI, GitHub Copilot, Cursor, Qwen Code, Kimi CLI, Mistral Vibe, Cline, and [the rest of the list](https://agentclientprotocol.com/get-started/agents) — is one entry in the config, with the command its documentation gives for ACP:
+
+```json
+{ "agents": { "my-agent": { "command": "my-agent", "args": ["acp"] } } }
+```
+
+```bash
+npx -y acpantenna connect my-agent
+```
+
+It has to be installed and logged in, as it is in your terminal. From there every step above is the same, with `my-agent` where `<agent>` is. More in the [README](https://github.com/fboldo/acpantenna#agents).
 
 ## Other commands
 
