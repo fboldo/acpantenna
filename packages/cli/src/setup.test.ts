@@ -199,6 +199,7 @@ test("setup writes a Matrix channel the CLI can load, its secrets in the keychai
 				claude: { preset: "claude" },
 				codex: { preset: "codex" },
 				opencode: { preset: "opencode" },
+				hermes: { preset: "hermes" },
 			},
 		});
 		// Windows has no owner-only modes; its user profile's access rules apply.

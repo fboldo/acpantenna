@@ -43,8 +43,8 @@ export interface AgentAuthConfig {
 export interface AgentConfig {
 	type?: AgentTransport;
 	/**
-	 * A built-in agent (`claude`, `codex`) that runs its ACP adapter; `command`
-	 * and `args`, when given, replace the preset's.
+	 * A built-in agent (`claude`, `codex`, `opencode`, `hermes`) that runs its
+	 * ACP adapter; `command` and `args`, when given, replace the preset's.
 	 */
 	preset?: string;
 	command: string;
@@ -162,7 +162,7 @@ export type AgentInput = Omit<AgentConfig, "command"> & { command?: string };
 
 export interface AcpAntennaConfig {
 	server?: ServerConfig;
-	/** Without any, every preset: `claude`, `codex` and `opencode`. */
+	/** Without any, every preset: `claude`, `codex`, `opencode` and `hermes`. */
 	agents?: Record<string, AgentInput>;
 	/**
 	 * The built-in `latch` channel is always there unless set to `false`; an
@@ -446,15 +446,18 @@ const CONFIG_FILENAMES = [
 ];
 
 /**
- * A coding agent that does not speak ACP itself, reached through its ACP
- * adapter: what `connect claude` starts when the config names no "claude".
+ * A coding agent acpantenna knows how to start, and how to pick a session up
+ * in again: what `connect claude` runs when the config names no "claude".
  */
 export interface AgentPreset {
 	title: string;
-	/** The npm package that runs it, with `bun x`. */
-	package: string;
+	/**
+	 * The npm package that runs it, with `bun x`; a preset whose agent is
+	 * distributed another way has none, and runs the command installed.
+	 */
+	package?: string;
 	/** Pinned, so a connection does not change agent under its user. */
-	version: string;
+	version?: string;
 	/** Arguments after the package, e.g. the subcommand that speaks ACP. */
 	args?: string[];
 	/**
@@ -463,6 +466,8 @@ export interface AgentPreset {
 	 * same session store.
 	 */
 	installed?: { command: string; args: string[] };
+	/** How to get it, for `connect` to say when a package-less preset's command is missing. */
+	install?: string;
 	/** How to pick a session up in the agent's own terminal UI; `{session}` is its id. */
 	resumeCommand?: string;
 }
@@ -488,6 +493,16 @@ export const AGENT_PRESETS: Readonly<Record<string, AgentPreset>> = {
 		installed: { command: "opencode", args: ["acp"] },
 		resumeCommand: "opencode --session {session}",
 	},
+	// Hermes speaks ACP itself (`hermes acp`) and is installed by its own
+	// script, not npm: there is no package to pin and fetch, so this preset
+	// needs the `hermes` the user installed.
+	hermes: {
+		title: "Hermes Agent",
+		installed: { command: "hermes", args: ["acp"] },
+		install:
+			"curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash",
+		resumeCommand: "hermes --resume {session}",
+	},
 };
 
 /** Where a preset's command is looked up, and what runs `bun x`. */
@@ -499,9 +514,9 @@ export interface PresetEnvironment {
 }
 
 /**
- * The agent a preset runs, or undefined for an id that is not one: its own
- * command when it is installed and the preset prefers it, else its package
- * with `bun x`.
+ * The agent a preset runs, or undefined for an id that is not one, and for a
+ * preset that has no package and whose command is not installed: its own
+ * command when it is installed, else its package with `bun x`.
  */
 export function presetAgentConfig(
 	presetId: string,
@@ -524,6 +539,10 @@ export function presetAgentConfig(
 			args: preset.installed.args,
 			env: {},
 		};
+	}
+
+	if (preset.package === undefined || preset.version === undefined) {
+		return undefined;
 	}
 
 	return {

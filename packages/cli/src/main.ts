@@ -238,7 +238,7 @@ export default defineConfig({
 	// The latch channel, the web client at latch.im, is built in; "latch":
 	// false turns it off. Add Matrix or a webhook here: see the README.
 	channels: {},
-	// Without agents, claude, codex and opencode are built in.
+	// Without agents, claude, codex, opencode and hermes are built in.
 });
 `,
 	);

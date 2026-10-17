@@ -2489,6 +2489,12 @@ export class AcpAntennaGateway {
 			return this.acpClientFactory(agentId, agentConfig);
 		}
 
+		if (!agentConfig.command) {
+			throw new Error(
+				`Agent "${agentId}" has no command to run: its preset's program is not installed.`,
+			);
+		}
+
 		if ((agentConfig.type ?? "stdio") !== "stdio") {
 			throw new Error(
 				`Agent "${agentId}" uses unsupported transport "${agentConfig.type}".`,

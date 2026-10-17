@@ -6,19 +6,19 @@
 [![CI](https://github.com/fboldo/acpantenna/actions/workflows/ci.yml/badge.svg)](https://github.com/fboldo/acpantenna/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**An ngrok for your coding agent.** One command gives Claude Code, Codex, OpenCode, or any [ACP](https://agentclientprotocol.com) agent a link and a QR code. Open it on your phone, or any browser, and the session you started at your desk carries on there, end-to-end encrypted.
+**An ngrok for your coding agent.** One command gives Claude Code, Codex, OpenCode, Hermes Agent, or any [ACP](https://agentclientprotocol.com) agent a link and a QR code. Open it on your phone, or any browser, and the session you started at your desk carries on there, end-to-end encrypted.
 
 <p align="center"><img src="docs/terminal.svg" alt="acpantenna connect claude prints a latch.im link and its QR code, shows the four words the browser shows, and connects once they match" width="752"></p>
 
 - **Your session, not a new one.** Connect the session you are working in and pick up mid-conversation. Back at your desk, `claude --resume` shows everything said in the browser.
-- **Your account.** Claude Code and Codex run through their official ACP adapters, and OpenCode as itself, on the subscription or key you are logged in with.
+- **Your account.** Claude Code and Codex run through their official ACP adapters, and OpenCode and Hermes Agent as themselves, on the subscription or key you are logged in with.
 - **End-to-end encrypted.** The browser and your machine agree on keys through the link; the relay between them forwards ciphertext it cannot read.
 - **Asks before it acts.** When the agent wants to run a command or edit a file, the browser asks you.
 - **Nothing to set up.** The web client at [latch.im](https://latch.im) is built in. Matrix, Discord, Telegram, IRC, a webhook, or a channel of your own are there when you want them.
 
 ## Quick start
 
-You need Node 18 or newer on Linux, macOS or Windows (10 1803 or later), and the agent you want to connect, logged in (`claude`, `codex`). The package brings its own [Bun](https://bun.sh).
+You need Node 18 or newer on Linux, macOS or Windows (10 1803 or later), and the agent you want to connect, installed and logged in (`claude`, `codex`, `opencode`, `hermes`). The package brings its own [Bun](https://bun.sh).
 
 Run it with `npx`, without installing anything, or install it once as a global command:
 
@@ -58,18 +58,19 @@ npx skills add fboldo/acpantenna
  latch.im ────┐                              ┌─ claude-agent-acp ─ Claude Code
  Matrix room ─┤                              ├─ codex-acp ─────── Codex
  webhook ─────┼─ channel ─ acpantenna ─ ACP ─┼─ opencode acp ──── OpenCode
- your own ────┘                              └─ any ACP agent
+ your own ────┘                              ├─ hermes acp ────── Hermes Agent
+                                             └─ any ACP agent
 ```
 
 - A **channel** is where you talk to the agent. The built-in `latch` channel carries ACP itself, end to end encrypted, to the web client at latch.im. Chat channels such as Matrix turn a conversation into messages for acpantenna, and its replies, tool calls and questions back into the chat.
-- An **agent** is any program that speaks the [Agent Client Protocol](https://agentclientprotocol.com) over stdio. Claude Code and Codex are reached through their official adapters (`@agentclientprotocol/claude-agent-acp`, `@agentclientprotocol/codex-acp`), pinned and fetched on first use. OpenCode speaks ACP itself: the `opencode` you have installed is used, so it is the same version as in your terminal, else a pinned `opencode-ai` is fetched.
+- An **agent** is any program that speaks the [Agent Client Protocol](https://agentclientprotocol.com) over stdio. Claude Code and Codex are reached through their official adapters (`@agentclientprotocol/claude-agent-acp`, `@agentclientprotocol/codex-acp`), pinned and fetched on first use. OpenCode and Hermes Agent speak ACP themselves: the one you have installed runs as itself — `opencode acp`, `hermes acp` — so it is the same version as in your terminal, over the same session store. OpenCode falls back to a pinned `opencode-ai`; Hermes, installed by its own script, has no package to fetch, so `connect` says how to get it.
 - **`connect`** binds one conversation to one agent session and returns. The channels run in a background server, one per config, managed over a unix socket only you can reach. It stops when its last connection is dropped, and picks connections up again if it restarts — as it does when a newer `acpantenna` finds an older server running, and replaces it.
 
 ## Agents
 
 <p align="center"><img src="docs/agents.svg" alt="Built in: Claude Code, Codex and OpenCode. Also: Gemini CLI, GitHub Copilot, Cursor, Qwen Code, Kimi CLI, Mistral Vibe and Cline" width="720"></p>
 
-Claude Code, Codex and OpenCode are built in: `connect claude`, `connect codex`, `connect opencode`. Any other agent that speaks ACP — these, and [the rest of the list](https://agentclientprotocol.com/overview/agents) — is one entry in your config, with the command its documentation gives for ACP:
+Claude Code, Codex, OpenCode and Hermes Agent are built in: `connect claude`, `connect codex`, `connect opencode`, `connect hermes`. Any other agent that speaks ACP — these, and [the rest of the list](https://agentclientprotocol.com/overview/agents) — is one entry in your config, with the command its documentation gives for ACP:
 
 ```json
 { "agents": { "my-agent": { "command": "my-agent", "args": ["acp"] } } }
@@ -78,6 +79,8 @@ Claude Code, Codex and OpenCode are built in: `connect claude`, `connect codex`,
 ```bash
 npx acpantenna connect my-agent
 ```
+
+Hermes Agent is the built-in acpantenna will not fetch for you: it installs itself ([the installer](https://hermes-agent.nousresearch.com/docs/getting-started/installation), `curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash`), and `connect hermes` runs the `hermes` that is there. With none, it says that command instead of starting a server it cannot feed.
 
 <sub>Logos from [Simple Icons](https://simpleicons.org) (CC0); they are trademarks of their owners, shown to say these agents speak ACP. Simple Icons has no OpenAI logo, so Codex has a plain mark.</sub>
 
