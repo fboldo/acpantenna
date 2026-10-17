@@ -49,7 +49,12 @@ test("a config file has the latch channel first and, without agents, every prese
 
 	expect(Object.keys(empty.channels)).toEqual(["latch"]);
 	expect(empty.channels.latch).toMatchObject(LATCH_CHANNEL);
-	expect(Object.keys(empty.agents)).toEqual(["claude", "codex", "opencode"]);
+	expect(Object.keys(empty.agents)).toEqual([
+		"claude",
+		"codex",
+		"opencode",
+		"hermes",
+	]);
 
 	const own = normalizeConfig(
 		withBuiltins({
@@ -250,6 +255,26 @@ test("OpenCode runs the opencode installed, else its pinned package", () => {
 	});
 });
 
+test("Hermes runs the hermes installed, and has no package to fall back on", () => {
+	expect(
+		presetAgentConfig("hermes", {
+			bun: "/opt/bun",
+			which: (command) =>
+				command === "hermes" ? "/home/me/.local/bin/hermes" : null,
+		}),
+	).toEqual({
+		type: "stdio",
+		command: "/home/me/.local/bin/hermes",
+		args: ["acp"],
+		env: {},
+	});
+	// Installed by its own script, not from npm: with no `hermes` there is
+	// nothing to run, and nothing of ours to fetch instead.
+	expect(
+		presetAgentConfig("hermes", { bun: "/opt/bun", which: () => null }),
+	).toBeUndefined();
+});
+
 test("an agent can be a preset, its command filled in and overridable", () => {
 	const config = normalizeConfig({
 		agents: {
@@ -274,7 +299,9 @@ test("an agent can be a preset, its command filled in and overridable", () => {
 			agents: { other: { preset: "gemini" } },
 			channels: { inbox: { type: "webhook" } },
 		}),
-	).toThrow("agents.other.preset must be one of claude, codex, opencode.");
+	).toThrow(
+		"agents.other.preset must be one of claude, codex, opencode, hermes.",
+	);
 });
 
 test("state defaults to a directory of the config's own under the state home", () => {

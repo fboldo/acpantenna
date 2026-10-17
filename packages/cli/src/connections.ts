@@ -104,6 +104,21 @@ export async function connectCommand(
 		);
 	}
 
+	// What the server will run: the config's agent, else the preset. A preset
+	// can be one the user installs themselves (`hermes`): with its command
+	// missing there is nothing to run, and no package of ours to fetch either.
+	const launch = configured?.command ? configured : presetAgentConfig(agent);
+
+	if (!launch) {
+		throw new Error(
+			[
+				`${preset?.title ?? agent} is not installed.`,
+				...(preset?.install ? [`Get it with: ${preset.install}.`] : []),
+				`Then run acpantenna connect ${agent} again.`,
+			].join(" "),
+		);
+	}
+
 	// On a terminal, a spinner says what it is waiting for; piped, it is quiet.
 	const progress =
 		context.interactive && !options.json ? clack.spinner() : undefined;
@@ -119,9 +134,7 @@ export async function connectCommand(
 	let connection: ConnectResult;
 
 	try {
-		// What the server will run: the config's agent, else the preset.
-		const launch = configured ?? presetAgentConfig(agent);
-		const fetched = launch && isBunX(launch) ? launch : undefined;
+		const fetched = isBunX(launch) ? launch : undefined;
 
 		if (fetched) {
 			progress?.start(`Preparing ${preset?.title ?? agent}`);
