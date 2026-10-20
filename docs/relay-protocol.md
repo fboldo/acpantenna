@@ -29,6 +29,8 @@ The relay is at `wss://<relay>/v1/rooms/<room>`. `room` is 16 random bytes in ba
    - After `ready`, every **binary** message from one peer is forwarded unchanged to the other. A text message after the hello is a protocol error.
    - A relay may close a room some time after the **first** `ready`, with `time-limit`. Reconnects and replacements never restart that clock.
    - A room expires 15 minutes after its last peer leaves, with `ttl`.
+   - A relay may close an agent that is alone in a room which has never been `ready`, with `ttl`, after a deadline of its own choosing (for example an hour after the first agent's hello). An agent that replaces it inherits that deadline. The relay can't see when the link expires, so a link that outlives the deadline stops working then: acpantenna ends the pairing on `closed`.
+   - A relay may refuse, with `closed: "protocol"`, a hello whose WebSocket `Origin` names a page other than its web client. A browser's hello comes from the web client's page; acpantenna sends no `Origin`.
    - A relay stores nothing, and logs nothing about rooms beyond aggregate counts.
    - A binary message is at most 65,535 + 16 bytes (one Noise message). A larger one closes the room with `protocol`.
 
