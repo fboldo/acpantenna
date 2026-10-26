@@ -62,6 +62,62 @@ export class ResumeBuffer {
 
 	constructor(private readonly maxBytes = DEFAULT_RESUME_BYTES) {}
 
+	/**
+	 * What the buffer holds, as plain data, for a host that can lose its
+	 * memory between transports (a process that is evicted or restarted) and
+	 * must still resume the connection.
+	 */
+	snapshot(): ResumeSnapshot {
+		return {
+			received: this.received,
+			next: this.next,
+			kept: this.kept.map((entry) => ({ ...entry })),
+		};
+	}
+
+	/** A buffer from {@link snapshot}'s output, keeping at most `maxBytes` of it. */
+	static restore(
+		snapshot: ResumeSnapshot,
+		maxBytes = DEFAULT_RESUME_BYTES,
+	): ResumeBuffer {
+		const { received, next, kept } = snapshot;
+		const counter = (n: unknown) => Number.isInteger(n) && (n as number) >= 0;
+		if (
+			!counter(received) ||
+			!counter(next) ||
+			next < 1 ||
+			!Array.isArray(kept)
+		) {
+			throw new SessionError("Not a resume buffer snapshot");
+		}
+		let last = 0;
+		for (const entry of kept) {
+			if (
+				!counter(entry?.stream) ||
+				entry.stream <= last ||
+				entry.stream >= next ||
+				typeof entry.message !== "string"
+			) {
+				throw new SessionError("Not a resume buffer snapshot");
+			}
+			last = entry.stream;
+		}
+		const buffer = new ResumeBuffer(maxBytes);
+		buffer.received = received;
+		buffer.next = next;
+		buffer.kept = kept.map((entry) => ({ ...entry }));
+		buffer.keptBytes = buffer.kept.reduce(
+			(n, entry) => n + entry.message.length,
+			0,
+		);
+		while (buffer.keptBytes > maxBytes && buffer.kept.length > 0) {
+			buffer.keptBytes -= (
+				buffer.kept.shift() as { message: string }
+			).message.length;
+		}
+		return buffer;
+	}
+
 	/** The stream id of the next message sent. */
 	get nextStream(): number {
 		return this.next;
@@ -105,6 +161,13 @@ export class ResumeBuffer {
 		this.kept = [];
 		this.keptBytes = 0;
 	}
+}
+
+/** A {@link ResumeBuffer} as plain, JSON-safe data. */
+export interface ResumeSnapshot {
+	received: number;
+	next: number;
+	kept: { stream: number; message: string }[];
 }
 
 export type SessionState =
@@ -218,6 +281,15 @@ export interface ResponderOptions extends SessionOptions {
 	 * message is a replay, and the session fails.
 	 */
 	acceptEphemeral?: (ephemeralPublicKey: Uint8Array) => boolean;
+	/**
+	 * Confirm by itself once the keys are confirmed, with no SAS words: for an
+	 * agent side that handed the link to the browser over a channel that
+	 * already authenticates the user, so there is nobody at the agent side to
+	 * compare words with. `onKeyConfirmed` still runs first; `onHandshake`
+	 * does not. Whoever holds the link before the right browser can pair, so
+	 * such a link must reach only that browser, once, and soon.
+	 */
+	autoConfirm?: boolean;
 }
 
 export class SessionError extends Error {
@@ -271,6 +343,7 @@ export class RelaySession implements SessionHandlers {
 	private sendCipher: CipherState | undefined;
 	private receiveCipher: CipherState | undefined;
 	private keyConfirmed = false;
+	private readonly autoConfirm: boolean;
 	private resumedValue = false;
 	private info: HandshakeInfo | undefined;
 	/** REMEMBER has been sent or received. */
@@ -288,6 +361,7 @@ export class RelaySession implements SessionHandlers {
 		handshake: Handshake,
 		options: SessionOptions & {
 			acceptEphemeral?: ResponderOptions["acceptEphemeral"];
+			autoConfirm?: boolean;
 			resume?: boolean;
 		},
 	) {
@@ -301,6 +375,10 @@ export class RelaySession implements SessionHandlers {
 		this.handshake = handshake;
 		this.sendRaw = options.send;
 		this.acceptEphemeral = options.acceptEphemeral;
+		this.autoConfirm =
+			role === "responder" &&
+			kind === "pairing" &&
+			options.autoConfirm === true;
 		this.maxMessageBytes = options.maxMessageBytes ?? DEFAULT_MAX_MESSAGE_BYTES;
 		this.reassembler = new Reassembler(
 			this.maxMessageBytes,
@@ -597,9 +675,13 @@ export class RelaySession implements SessionHandlers {
 			if (this.stateValue !== "pairing") {
 				return;
 			}
-			this.onHandshake?.(this.info as HandshakeInfo);
-			if (this.stateValue !== "pairing") {
-				return;
+			if (this.autoConfirm) {
+				this.confirm();
+			} else {
+				this.onHandshake?.(this.info as HandshakeInfo);
+				if (this.stateValue !== "pairing") {
+					return;
+				}
 			}
 		}
 		this.handleFrame(frame);
