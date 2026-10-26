@@ -3,7 +3,7 @@ name: Release
 # Run by hand from main: moves acpantenna and @acpantenna/relay-protocol to the
 # next version (they are released together), commits that to main, tags
 # v<version>, makes the GitHub release with notes from the merged pull
-# requests, and publishes both to npm through publish.yml.
+# requests, and starts publish.yml on the tag to put both on npm.
 on:
   workflow_dispatch:
     inputs:
@@ -80,10 +80,18 @@ jobs:
           TAG: ${{ steps.bump.outputs.tag }}
         run: gh release create "${TAG}" --verify-tag --title "${TAG}" --generate-notes
 
+  # Started as its own run rather than called: npm trusts publish.yml as the
+  # publisher, and a called workflow would publish as release.yml. A run
+  # started by workflow_dispatch is the one event this workflow's token may
+  # start.
   publish:
     needs: release
-    uses: ./.github/workflows/publish.yml
-    with:
-      ref: ${{ needs.release.outputs.tag }}
-      ci: false
-    secrets: inherit
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Start publish.yml on the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: gh workflow run publish.yml --repo "${{ github.repository }}" --ref "${TAG}"

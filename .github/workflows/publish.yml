@@ -4,8 +4,9 @@ name: Publish
 # to npm, and @acpantenna/relay-protocol's version if it is not there yet.
 # Run by hand, it publishes whichever of the two versions npm does not have.
 # release.yml calls it with the tag it made: a release made by the workflow's
-# own token starts no other workflow. Needs the NPM_TOKEN secret: an npm token
-# that can publish both.
+# own token starts no other workflow. npm trusts this workflow (publish.yml in
+# fboldo/acpantenna) as the publisher of both packages, through GitHub's OIDC
+# token: there is no npm token to keep or renew.
 on:
   release:
     types: [published]
@@ -48,6 +49,10 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
+      # Trusted publishing needs npm 11.5.1 or newer; Node 22 ships npm 10.
+      - name: Update npm
+        run: npm install -g npm@^11.5.1
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -67,11 +72,7 @@ jobs:
       - name: Publish @acpantenna/relay-protocol
         working-directory: packages/relay-protocol
         run: ../../npm/acpantenna/scripts/publish-once.sh
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish acpantenna
         working-directory: npm/acpantenna
         run: scripts/publish-once.sh
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
