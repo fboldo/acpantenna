@@ -1,6 +1,6 @@
 {
 	"name": "@acpantenna/relay-protocol",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"description": "acpantenna's relay protocol: Noise NKpsk0 to pair and KK to reconnect, frames, the pairing link and the SAS words. Runs in browsers and Bun.",
 	"license": "MIT",
 	"type": "module",

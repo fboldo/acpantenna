@@ -1,6 +1,6 @@
 {
 	"name": "acpantenna",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"description": "An ngrok for your coding agent: one command gives Claude Code, Codex, OpenCode or any ACP agent an end-to-end encrypted link to use it from your phone or any browser.",
 	"license": "MIT",
 	"type": "module",
