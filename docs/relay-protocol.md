@@ -23,7 +23,7 @@ The relay is at `wss://<relay>/v1/rooms/<room>`. `room` is 16 random bytes in ba
    - `{"t":"peer-left"}`: the other peer disconnected. The room stays until its TTL.
    - `{"t":"closed","reason":"time-limit"|"ttl"|"replaced"|"limit"|"protocol"}`, after which the relay closes the socket.
 3. **Rules:**
-   - The agent creates the room by joining first. A browser that joins a room with no agent gets `closed: "ttl"`.
+   - The agent creates the room by joining first. A browser that joins a room with no agent gets `closed: "ttl"`, unless the relay can bring the agent: a relay that starts agents itself may answer `waiting` instead, and the agent joins when it is up.
    - A room holds at most one agent and one browser. A second browser is refused with WebSocket close code 4009, unless its hello has `resume`: then it replaces the first, which gets `closed: "replaced"`, because a phone's dead socket often still looks open to the relay. A second agent replaces the first in the same way. Either way the peer that stays gets `peer-left`, then `ready`.
    - A `resume` browser that joins a room which has been `ready` before, but has no agent right now, gets `waiting`, not `closed: "ttl"`.
    - After `ready`, every **binary** message from one peer is forwarded unchanged to the other. A text message after the hello is a protocol error.
@@ -54,6 +54,7 @@ The handshake is `Noise_NKpsk0_25519_ChaChaPoly_BLAKE2s`, as in the Noise Protoc
   - The agent side **shows the words only after key confirmation**, once it has decrypted that first frame. A replayed message 1 never puts words in front of the user.
   - Both sides show the words. The agent side lets the browser in only after the user confirms them **on the agent side** (in the terminal that ran `connect`).
 - **Failed attempts.** Before key confirmation, a handshake that fails ends that attempt, not the link: the agent side waits for another browser. After 5 failed attempts it gives the link up.
+- **Words given by another channel.** An agent side that handed the link to the browser over a channel that already authenticates the user, with nobody at the agent side to compare words, may confirm by itself once the keys are confirmed; the browser then doesn't show the words either. Whoever holds the link first can pair, so such a link must reach only the right browser, once, and soon. `responder({ autoConfirm: true })` does this.
 - **Remember.** Right after CONFIRMED, before any ACP message, a browser that is to be remembered sends one **REMEMBER** frame (§3) with the public half of a static X25519 key it has made for this connection. The words authenticated the channel, so they authenticate the key. The agent side binds the key to the connection. A browser that sends no REMEMBER can't reconnect.
 
 ### 2.2 Reconnect
@@ -65,7 +66,7 @@ The handshake is `Noise_NKpsk0_25519_ChaChaPoly_BLAKE2s`, as in the Noise Protoc
 - **Message 1** (browser → agent): `e, es, ss`, with an empty payload. **Message 2** (agent → browser): `e, ee, se`, with an empty payload.
 - **No psk and no words:** both static keys are already authenticated.
 - **Key confirmation.** As in pairing, the browser's first transport frame is a PING, and the agent side acts only once it has decrypted it, so a replayed message 1 changes nothing. Then the agent side answers CONFIRMED by itself.
-- **Resuming.** ACP stream ids don't restart with a reconnect: they go on counting over the whole connection, and each side keeps the messages it sent most recently (8 MiB by default).
+- **Resuming.** An agent side that can lose its memory between transports keeps its `ResumeBuffer` as `snapshot()` and brings it back with `ResumeBuffer.restore()`. ACP stream ids don't restart with a reconnect: they go on counting over the whole connection, and each side keeps the messages it sent most recently (8 MiB by default).
   - The browser's PING carries the last stream it received whole, as a u32 BE, or nothing if it has lost its state (a reloaded page).
   - If it can, the agent side answers CONFIRMED with the last stream it received whole, as a u32 BE, then sends again every stream after the one the browser named. The browser does the same the other way. Nothing in flight when the socket died is lost.
   - If the browser sent an empty PING, or the agent side no longer has what the browser missed, CONFIRMED is empty: both sides start again from stream 1, and the browser loads the session afresh (§4). If the browser no longer has what the agent side missed, it fails the session, and reconnects with an empty PING.

@@ -45,7 +45,11 @@ interface Pair {
  * recorded, so a test can tamper with them before handing them over.
  */
 function pair(
-	options: { deliver?: boolean; cache?: EphemeralCache } = {},
+	options: {
+		deliver?: boolean;
+		cache?: EphemeralCache;
+		autoConfirm?: boolean;
+	} = {},
 ): Pair {
 	const deliver = options.deliver ?? true;
 	const staticKeyPair = generateKeyPair();
@@ -85,6 +89,7 @@ function pair(
 		room: link.room,
 		webOrigin: link.webOrigin,
 		acceptEphemeral: options.cache?.accept,
+		autoConfirm: options.autoConfirm,
 		send: (data) => {
 			result.wire.push({ from: "agent", data });
 			if (deliver) result.browser.receive(data);
@@ -747,5 +752,114 @@ describe("resuming", () => {
 		expect(buffer.after(2)).toEqual([]);
 		expect(buffer.after(3)).toBeUndefined();
 		expect(buffer.after(-1)).toBeUndefined();
+	});
+});
+
+describe("autoConfirm", () => {
+	test("opens once the keys are confirmed, with no words on the agent side", () => {
+		const p = pair({ autoConfirm: true });
+		p.browser.start();
+		expect(p.agent.state).toBe("open");
+		expect(p.browser.state).toBe("open");
+		expect(p.keyConfirmed.count).toBe(1);
+		expect(p.sas.agent).toBeUndefined();
+		p.browser.send('{"jsonrpc":"2.0","id":1,"method":"initialize"}');
+		p.agent.send('{"jsonrpc":"2.0","id":1,"result":{}}');
+		expect(p.received.agent).toEqual([
+			'{"jsonrpc":"2.0","id":1,"method":"initialize"}',
+		]);
+		expect(p.received.browser).toEqual([
+			'{"jsonrpc":"2.0","id":1,"result":{}}',
+		]);
+	});
+
+	test("answers the browser's first PING after confirming", () => {
+		const p = pair({ deliver: false, autoConfirm: true });
+		p.browser.start();
+		pump(p);
+		// message 1, message 2, the PING, then CONFIRMED and the PONG from the agent.
+		expect(p.wire.map((m) => m.from)).toEqual([
+			"browser",
+			"agent",
+			"browser",
+			"agent",
+			"agent",
+		]);
+		expect(p.browser.state).toBe("open");
+	});
+
+	test("a replayed message 1 never confirms", () => {
+		const p = pair({ deliver: false, autoConfirm: true });
+		p.browser.start();
+		const message1 = p.wire[0]!.data;
+		const sent: Uint8Array[] = [];
+		let confirmed = false;
+		const replayed = responder({
+			staticKeyPair: p.staticKeyPair,
+			psk: p.link.psk,
+			room: p.link.room,
+			webOrigin: p.link.webOrigin,
+			autoConfirm: true,
+			send: (data) => sent.push(data),
+			onKeyConfirmed: () => {
+				confirmed = true;
+			},
+		});
+		replayed.receive(message1);
+		// It answers with message 2, but without the browser's ephemeral key nothing can follow.
+		expect(sent).toHaveLength(1);
+		expect(replayed.state).toBe("handshake");
+		expect(confirmed).toBe(false);
+	});
+});
+
+describe("ResumeBuffer snapshots", () => {
+	test("round-trip through JSON and resume as before", () => {
+		const buffer = new ResumeBuffer();
+		buffer.add("one");
+		buffer.add("two");
+		buffer.add("three");
+		buffer.received = 7;
+		const restored = ResumeBuffer.restore(
+			JSON.parse(JSON.stringify(buffer.snapshot())),
+		);
+		expect(restored.received).toBe(7);
+		expect(restored.nextStream).toBe(4);
+		expect(restored.after(1)).toEqual([
+			{ stream: 2, message: "two" },
+			{ stream: 3, message: "three" },
+		]);
+		expect(restored.add("four")).toBe(4);
+	});
+
+	test("keep the restoring limit", () => {
+		const buffer = new ResumeBuffer();
+		for (const m of ["aaaa", "bbbb", "cccc"]) buffer.add(m);
+		const restored = ResumeBuffer.restore(buffer.snapshot(), 8);
+		expect(restored.after(0)).toBeUndefined();
+		expect(restored.after(1)).toEqual([
+			{ stream: 2, message: "bbbb" },
+			{ stream: 3, message: "cccc" },
+		]);
+	});
+
+	test("refuse what isn't a snapshot", () => {
+		for (const bad of [
+			{},
+			{ received: -1, next: 1, kept: [] },
+			{ received: 0, next: 0, kept: [] },
+			{
+				received: 0,
+				next: 3,
+				kept: [
+					{ stream: 2, message: "x" },
+					{ stream: 1, message: "y" },
+				],
+			},
+			{ received: 0, next: 2, kept: [{ stream: 2, message: "x" }] },
+			{ received: 0, next: 2, kept: [{ stream: 1, message: 5 }] },
+		]) {
+			expect(() => ResumeBuffer.restore(bad as never)).toThrow();
+		}
 	});
 });
